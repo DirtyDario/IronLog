@@ -3,11 +3,25 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { seedDefaultExercises } from '$lib/db/seed';
+	import { db } from '$lib/db/schema';
 
 	let { children } = $props();
 
-	onMount(() => {
-		seedDefaultExercises();
+	onMount(async () => {
+		await seedDefaultExercises();
+		// Clean up orphaned unfinished workouts from previous sessions (older than 12h)
+		const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+		const orphaned = await db.workouts
+			.filter((w) => !w.finishedAt && new Date(w.date) < cutoff)
+			.toArray();
+		for (const w of orphaned) {
+			const wes = await db.workoutExercises.where('workoutId').equals(w.id).toArray();
+			for (const we of wes) {
+				await db.sets.where('workoutExerciseId').equals(we.id).delete();
+			}
+			await db.workoutExercises.where('workoutId').equals(w.id).delete();
+			await db.workouts.delete(w.id);
+		}
 	});
 
 	const tabs = [

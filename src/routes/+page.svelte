@@ -12,6 +12,7 @@
 		recentWorkouts = await db.workouts
 			.orderBy('date')
 			.reverse()
+			.filter((w) => !!w.finishedAt)
 			.limit(3)
 			.toArray();
 	});
@@ -66,7 +67,7 @@
 	{:else}
 		<div class="flex flex-col gap-3">
 			<button
-				onclick={() => goto('/workout/active')}
+				onclick={async () => { await activeWorkout.start(); goto('/workout/active'); }}
 				class="w-full rounded-2xl bg-orange-500 py-5 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
 			>
 				+ Start Workout

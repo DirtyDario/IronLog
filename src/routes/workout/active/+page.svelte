@@ -26,8 +26,13 @@
 	});
 
 	$effect(() => {
-		if (!$activeWorkout.workout) {
-			activeWorkout.start();
+		// If no active workout in store (e.g. after discard + page reload), go home
+		// Don't auto-start — user must explicitly tap "Start Workout"
+		if (!$activeWorkout.workout && typeof window !== 'undefined') {
+			// Small delay to let the store hydrate first
+			setTimeout(() => {
+				if (!$activeWorkout.workout) goto('/');
+			}, 100);
 		}
 	});
 
