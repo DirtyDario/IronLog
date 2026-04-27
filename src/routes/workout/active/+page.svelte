@@ -42,8 +42,9 @@
 	}
 
 	async function handleFinish() {
+		const workoutId = $activeWorkout.workout?.id;
 		await activeWorkout.finish();
-		goto('/history');
+		goto(`/workout/summary/${workoutId}`);
 	}
 
 	async function handleDiscard() {

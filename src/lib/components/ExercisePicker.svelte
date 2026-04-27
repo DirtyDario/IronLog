@@ -13,6 +13,12 @@
 	let exercises: Exercise[] = $state([]);
 	let showAddCustom = $state(false);
 	let customName = $state('');
+	let customMuscle = $state<MuscleGroup>('other');
+
+	const muscleGroups: MuscleGroup[] = [
+		'chest', 'back', 'shoulders', 'biceps', 'triceps',
+		'legs', 'glutes', 'core', 'cardio', 'full body', 'other'
+	];
 
 	const muscleOrder: MuscleGroup[] = [
 		'chest', 'back', 'shoulders', 'biceps', 'triceps',
@@ -38,7 +44,6 @@
 			if (!map.has(g)) map.set(g, []);
 			map.get(g)!.push(e);
 		}
-		// Sort by muscleOrder
 		const sorted = new Map<string, Exercise[]>();
 		for (const mg of muscleOrder) {
 			if (map.has(mg)) sorted.set(mg, map.get(mg)!);
@@ -56,7 +61,7 @@
 			id,
 			name: customName.trim(),
 			type: 'weightReps',
-			muscleGroup: 'other',
+			muscleGroup: customMuscle,
 			isCustom: true
 		});
 		onSelect(id);
@@ -66,35 +71,51 @@
 <div class="fixed inset-0 z-40 flex flex-col bg-zinc-950">
 	<!-- Header -->
 	<div class="flex items-center gap-3 border-b border-zinc-800 p-4 pt-12">
-		<button onclick={onClose} class="text-zinc-400 text-xl">✕</button>
+		<button onclick={onClose} class="text-2xl text-zinc-400 leading-none">✕</button>
 		<h2 class="flex-1 text-lg font-semibold">Add Exercise</h2>
 		<button
 			onclick={() => (showAddCustom = !showAddCustom)}
 			class="text-sm text-orange-400 font-medium"
 		>
-			+ Custom
+			{showAddCustom ? 'Cancel' : '+ Custom'}
 		</button>
 	</div>
 
 	{#if showAddCustom}
-		<div class="border-b border-zinc-800 p-4 flex gap-2">
+		<div class="border-b border-zinc-800 bg-zinc-900 p-4 flex flex-col gap-3">
 			<input
 				type="text"
 				placeholder="Exercise name"
 				bind:value={customName}
-				class="flex-1 rounded-xl bg-zinc-800 px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
 			/>
+			<div>
+				<p class="mb-1.5 text-xs font-medium text-zinc-500">Muscle Group</p>
+				<div class="flex flex-wrap gap-2">
+					{#each muscleGroups as mg}
+						<button
+							onclick={() => (customMuscle = mg)}
+							class="rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors
+								{customMuscle === mg
+								? 'bg-orange-500 text-white'
+								: 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'}"
+						>
+							{mg}
+						</button>
+					{/each}
+				</div>
+			</div>
 			<button
 				onclick={addCustom}
-				class="rounded-xl bg-orange-500 px-4 py-2.5 font-semibold text-white active:bg-orange-600"
+				class="w-full rounded-xl bg-orange-500 py-3 font-semibold text-white active:bg-orange-600"
 			>
-				Add
+				Add Exercise
 			</button>
 		</div>
 	{/if}
 
 	<!-- Search -->
-	<div class="p-4">
+	<div class="p-4 pb-2">
 		<input
 			type="search"
 			placeholder="Search exercises..."
@@ -107,7 +128,7 @@
 	<div class="flex-1 overflow-y-auto px-4 pb-8">
 		{#each grouped() as [group, exs]}
 			<div class="mb-4">
-				<p class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 capitalize">
+				<p class="mb-2 mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 capitalize">
 					{group}
 				</p>
 				<div class="flex flex-col gap-1">

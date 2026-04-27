@@ -25,13 +25,11 @@
 </script>
 
 <div id="app-shell">
-	<!-- Main content — scrolls independently -->
 	<main id="app-content">
 		{@render children()}
 	</main>
 
-	<!-- Bottom tab bar — always pinned -->
-	<nav class="shrink-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
+	<nav id="tab-bar" class="border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
 		<div class="flex">
 			{#each tabs as tab}
 				<a

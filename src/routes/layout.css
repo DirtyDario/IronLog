@@ -4,63 +4,57 @@
 	--color-orange-500: #f97316;
 }
 
-/* Safe area insets for iPhone notch/home bar */
-.safe-bottom {
-	padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-.safe-top {
-	padding-top: env(safe-area-inset-top, 0px);
-}
-
-/* Scrollbar hide for webkit */
-::-webkit-scrollbar {
-	display: none;
-}
-
-* {
-	-webkit-tap-highlight-color: transparent;
-	/* Prevent text size adjustment on rotation */
+/* ── Core reset ─────────────────────────────────────────────── */
+html, body {
+	height: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
 }
 
-html, body {
-	overflow-x: hidden;
-	overscroll-behavior: none;
-	/* Fix height on iOS when keyboard opens or screen rotates */
-	height: 100%;
+* {
+	-webkit-tap-highlight-color: transparent;
 }
 
-/* Lock the app shell to the viewport — no overflow on rotation */
+/* ── App wrapper ─────────────────────────────────────────────── */
+/* Simple flex column — no fixed positioning tricks */
 #app-shell {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
 	display: flex;
 	flex-direction: column;
+	height: 100dvh;
+	height: -webkit-fill-available; /* iOS 15 fallback */
 	overflow: hidden;
-	/* Ensure it fills behind the home indicator */
-	padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Scrollable content area inside the fixed shell */
+/* ── Scrollable content ──────────────────────────────────────── */
 #app-content {
-	flex: 1;
+	flex: 1 1 0%;
 	overflow-y: auto;
 	overflow-x: hidden;
 	-webkit-overflow-scrolling: touch;
 	overscroll-behavior-y: contain;
+	/* Extra bottom padding so content isn't hidden behind tab bar */
+	padding-bottom: 4px;
 }
 
-/* Number inputs — remove spinner arrows on iOS/Chrome */
+/* ── Tab bar ─────────────────────────────────────────────────── */
+#tab-bar {
+	flex-shrink: 0;
+	/* Extend into iPhone home-indicator zone */
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Scrollbar hide ──────────────────────────────────────────── */
+::-webkit-scrollbar { display: none; }
+
+/* ── Number input — hide spinners ───────────────────────────── */
 input[type='number']::-webkit-inner-spin-button,
 input[type='number']::-webkit-outer-spin-button {
 	-webkit-appearance: none;
 	margin: 0;
 }
-input[type='number'] {
-	-moz-appearance: textfield;
-}
+input[type='number'] { -moz-appearance: textfield; }
+
+/* ── Safe area helpers ───────────────────────────────────────── */
+.safe-top  { padding-top:  env(safe-area-inset-top,  0px); }
