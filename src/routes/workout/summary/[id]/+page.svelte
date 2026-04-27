@@ -91,7 +91,7 @@
 	}
 </script>
 
-<div class="flex flex-col gap-5 p-4 pt-12 pb-8">
+<div class="flex flex-col gap-5 p-4 pt-4 pb-8">
 	<!-- Header -->
 	<div class="text-center">
 		<div class="text-5xl mb-3">🏆</div>

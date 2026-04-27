@@ -162,7 +162,7 @@
 
 <div class="flex flex-col pb-8">
 	<!-- Header -->
-	<div class="px-4 pt-12 pb-4">
+	<div class="px-4 pt-4 pb-4">
 		<h1 class="text-3xl font-bold tracking-tight">Stats</h1>
 	</div>
 

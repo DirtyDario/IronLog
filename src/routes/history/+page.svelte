@@ -35,7 +35,7 @@
 	});
 </script>
 
-<div class="p-4 pt-12 pb-8">
+<div class="p-4 pt-4 pb-8">
 	<h1 class="mb-6 text-3xl font-bold tracking-tight">History</h1>
 
 	{#if workouts.length === 0}

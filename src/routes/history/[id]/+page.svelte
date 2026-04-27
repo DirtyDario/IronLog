@@ -58,7 +58,7 @@
 	let showDelete = $state(false);
 </script>
 
-<div class="p-4 pt-12 pb-8">
+<div class="p-4 pt-4 pb-8">
 	<div class="mb-6 flex items-start justify-between">
 		<div>
 			<a href="/history" class="text-sm text-zinc-500 mb-1 block">← History</a>

@@ -23,31 +23,28 @@ body {
 	-webkit-tap-highlight-color: transparent;
 }
 
-/* ── Tab bar — fixed to bottom, always visible ───────────────── */
-/* On iOS PWA, position:fixed is the only reliable approach */
+/* ── Tab bar — fixed to TOP ───────────────────────────────────── */
 #tab-bar {
-	position: fixed;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	z-index: 50;
-	/* Extend bg into iPhone home-indicator area */
-	padding-bottom: env(safe-area-inset-bottom, 0px);
-	background: rgba(9, 9, 11, 0.97);
-	border-top: 1px solid #27272a;
-	/* iOS momentum scroll fix */
-	-webkit-transform: translateZ(0);
-	transform: translateZ(0);
-}
-
-/* ── Scrollable content — padded so nothing hides behind tab bar ─ */
-#app-content {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
-	/* 58px tab icons + safe area */
-	bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+	z-index: 50;
+	padding-top: env(safe-area-inset-top, 0px);
+	background: rgba(9, 9, 11, 0.97);
+	border-bottom: 1px solid #27272a;
+	-webkit-transform: translateZ(0);
+	transform: translateZ(0);
+}
+
+/* ── Scrollable content — padded so nothing hides behind top tab bar ─ */
+#app-content {
+	position: fixed;
+	/* 58px tab icons + safe area top */
+	top: calc(58px + env(safe-area-inset-top, 0px));
+	left: 0;
+	right: 0;
+	bottom: 0;
 	overflow-y: auto;
 	overflow-x: hidden;
 	-webkit-overflow-scrolling: touch;

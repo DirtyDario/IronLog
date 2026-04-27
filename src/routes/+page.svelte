@@ -33,7 +33,7 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6 p-5 pt-12">
+<div class="flex flex-col gap-6 p-5 pt-4">
 	<!-- Header -->
 	<div>
 		<h1 class="text-3xl font-bold tracking-tight">IronLog</h1>

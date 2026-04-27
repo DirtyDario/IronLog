@@ -24,12 +24,7 @@
 	}
 </script>
 
-<!-- Scrollable content area -->
-<main id="app-content">
-	{@render children()}
-</main>
-
-<!-- Tab bar — position:fixed handles iOS PWA correctly -->
+<!-- Tab bar — fixed to TOP -->
 <nav id="tab-bar">
 	<div class="flex">
 		{#each tabs as tab}
@@ -46,3 +41,8 @@
 		{/each}
 	</div>
 </nav>
+
+<!-- Scrollable content area -->
+<main id="app-content">
+	{@render children()}
+</main>

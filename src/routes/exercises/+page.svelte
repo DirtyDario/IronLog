@@ -46,7 +46,7 @@
 	}
 </script>
 
-<div class="p-4 pt-12 pb-8">
+<div class="p-4 pt-4 pb-8">
 	<div class="mb-4 flex items-center justify-between">
 		<h1 class="text-3xl font-bold tracking-tight">Exercises</h1>
 		<button

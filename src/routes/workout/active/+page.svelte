@@ -73,7 +73,7 @@
 	</button>
 {/if}
 
-<div class="flex flex-col gap-4 p-4 pt-12 pb-40">
+<div class="flex flex-col gap-4 p-4 pt-4 pb-40">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<div>

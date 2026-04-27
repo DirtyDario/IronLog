@@ -51,7 +51,7 @@
 	}
 </script>
 
-<div class="p-4 pt-12 pb-8">
+<div class="p-4 pt-4 pb-8">
 	<a href="/routines" class="text-sm text-zinc-500 mb-2 block">← Routines</a>
 	<div class="mb-6 flex items-center justify-between">
 		<h1 class="text-2xl font-bold">{routine?.name ?? 'Routine'}</h1>
