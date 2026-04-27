@@ -30,9 +30,9 @@ html, body {
 	padding-bottom: env(safe-area-inset-bottom, 16px);
 }
 
-/* Content — normal flow, padded so it doesn't hide behind tab bar */
-/* 58px tab bar height + up to 34px home indicator = 92px safe padding */
+/* Content — normal flow, padded top for status bar, bottom for tab bar */
 #app-content {
+	padding-top: env(safe-area-inset-top, 44px);
 	padding-bottom: calc(58px + env(safe-area-inset-bottom, 16px));
 	min-height: 100dvh;
 }
