@@ -20,4 +20,42 @@
 
 * {
 	-webkit-tap-highlight-color: transparent;
+	/* Prevent text size adjustment on rotation */
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+html, body {
+	overflow-x: hidden;
+	overscroll-behavior: none;
+	/* Fix height on iOS when keyboard opens or screen rotates */
+	height: 100%;
+}
+
+/* Lock the app shell to the viewport — no overflow on rotation */
+#app-shell {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+/* Scrollable content area inside the fixed shell */
+#app-content {
+	flex: 1;
+	overflow-y: auto;
+	overflow-x: hidden;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-y: contain;
+}
+
+/* Number inputs — remove spinner arrows on iOS/Chrome */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+input[type='number'] {
+	-moz-appearance: textfield;
 }

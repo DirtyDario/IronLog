@@ -24,22 +24,22 @@
 	}
 </script>
 
-<div class="flex h-dvh flex-col bg-zinc-950">
-	<!-- Main content -->
-	<main class="min-h-0 flex-1 overflow-y-auto">
+<div id="app-shell">
+	<!-- Main content — scrolls independently -->
+	<main id="app-content">
 		{@render children()}
 	</main>
 
-	<!-- Bottom tab bar -->
-	<nav class="safe-bottom border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
+	<!-- Bottom tab bar — always pinned -->
+	<nav class="safe-bottom shrink-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
 		<div class="flex">
 			{#each tabs as tab}
 				<a
 					href={tab.href}
-					class="flex flex-1 flex-col items-center gap-0.5 px-2 py-3 text-xs transition-colors
+					class="flex flex-1 flex-col items-center gap-0.5 px-1 py-2.5 text-xs transition-colors
 						{isActive(tab.href, $page.url.pathname)
 						? 'text-orange-500'
-						: 'text-zinc-500 hover:text-zinc-300'}"
+						: 'text-zinc-500 active:text-zinc-300'}"
 				>
 					<span class="text-xl leading-none">{tab.icon}</span>
 					<span class="font-medium">{tab.label}</span>

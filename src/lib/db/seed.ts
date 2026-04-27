@@ -5,7 +5,12 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'bench-press', name: 'Bench Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'incline-bench', name: 'Incline Bench Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'decline-bench', name: 'Decline Bench Press', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-bench-press', name: 'Dumbbell Bench Press', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-incline-press', name: 'Incline Dumbbell Press', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-decline-press', name: 'Decline Dumbbell Press', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-pullover', name: 'Dumbbell Pullover', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'dumbbell-fly', name: 'Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-incline-fly', name: 'Incline Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'cable-fly', name: 'Cable Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'pushup', name: 'Push-Up', type: 'bodyweightReps', muscleGroup: 'chest' },
 	{ id: 'dip', name: 'Dip', type: 'bodyweightReps', muscleGroup: 'chest' },
@@ -88,15 +93,14 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'running', name: 'Running', type: 'distance', muscleGroup: 'cardio' },
 	{ id: 'cycling', name: 'Cycling', type: 'distance', muscleGroup: 'cardio' },
 	{ id: 'rowing', name: 'Rowing', type: 'distance', muscleGroup: 'cardio' },
+	{ id: 'crosstrainer', name: 'Crosstrainer', type: 'time', muscleGroup: 'cardio' },
+	{ id: 'stairmaster', name: 'Stairmaster', type: 'time', muscleGroup: 'cardio' },
 	{ id: 'jumping-jacks', name: 'Jumping Jacks', type: 'time', muscleGroup: 'cardio' },
 	{ id: 'jump-rope', name: 'Jump Rope', type: 'time', muscleGroup: 'cardio' }
 ];
 
 export async function seedDefaultExercises() {
-	const count = await db.exercises.count();
-	if (count > 0) return; // already seeded
-
-	await db.exercises.bulkAdd(
+	await db.exercises.bulkPut(
 		defaultExercises.map((e) => ({ ...e, isCustom: false }))
 	);
 }
