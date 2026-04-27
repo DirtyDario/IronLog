@@ -4,10 +4,10 @@ import { db } from '$lib/db/schema';
 
 export async function getLifetimeTotals() {
 	const workouts = await db.workouts.toArray();
-	const totalWorkouts = workouts.filter((w) => w.finishedAt).length;
+	const totalWorkouts = workouts.length; // count all saved workouts
 	const totalTimeSec = workouts.reduce((sum, w) => sum + (w.durationSec ?? 0), 0);
 
-	const allSets = await db.sets.where('completed').equals(1).toArray();
+	const allSets = await db.sets.filter((s) => s.completed === true).toArray();
 	const totalVolume = allSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 	const totalSets = allSets.length;
 	const totalReps = allSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
@@ -18,9 +18,7 @@ export async function getLifetimeTotals() {
 // ── Training streak (consecutive weeks with ≥1 workout) ─────────────────────
 
 export async function getStreak(): Promise<number> {
-	const workouts = await db.workouts
-		.filter((w) => !!w.finishedAt)
-		.toArray();
+	const workouts = await db.workouts.toArray();
 
 	if (!workouts.length) return 0;
 
@@ -62,9 +60,7 @@ export async function getStreak(): Promise<number> {
 export interface WeekCount { label: string; count: number }
 
 export async function getWeeklyFrequency(): Promise<WeekCount[]> {
-	const workouts = await db.workouts
-		.filter((w) => !!w.finishedAt)
-		.toArray();
+	const workouts = await db.workouts.toArray();
 
 	const weeks: WeekCount[] = [];
 	const now = new Date();

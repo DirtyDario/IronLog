@@ -5,44 +5,53 @@
 }
 
 /* ── Core reset ─────────────────────────────────────────────── */
-html, body {
+html {
+	height: 100%;
+	overflow: hidden;
+}
+
+body {
 	height: 100%;
 	overflow: hidden;
 	overscroll-behavior: none;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
+	background: #09090b;
 }
 
 * {
 	-webkit-tap-highlight-color: transparent;
 }
 
-/* ── App wrapper ─────────────────────────────────────────────── */
-/* Simple flex column — no fixed positioning tricks */
-#app-shell {
-	display: flex;
-	flex-direction: column;
-	height: 100dvh;
-	height: -webkit-fill-available; /* iOS 15 fallback */
-	overflow: hidden;
+/* ── Tab bar — fixed to bottom, always visible ───────────────── */
+/* On iOS PWA, position:fixed is the only reliable approach */
+#tab-bar {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	z-index: 50;
+	/* Extend bg into iPhone home-indicator area */
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+	background: rgba(9, 9, 11, 0.97);
+	border-top: 1px solid #27272a;
+	/* iOS momentum scroll fix */
+	-webkit-transform: translateZ(0);
+	transform: translateZ(0);
 }
 
-/* ── Scrollable content ──────────────────────────────────────── */
+/* ── Scrollable content — padded so nothing hides behind tab bar ─ */
 #app-content {
-	flex: 1 1 0%;
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	/* 58px tab icons + safe area */
+	bottom: calc(58px + env(safe-area-inset-bottom, 0px));
 	overflow-y: auto;
 	overflow-x: hidden;
 	-webkit-overflow-scrolling: touch;
 	overscroll-behavior-y: contain;
-	/* Extra bottom padding so content isn't hidden behind tab bar */
-	padding-bottom: 4px;
-}
-
-/* ── Tab bar ─────────────────────────────────────────────────── */
-#tab-bar {
-	flex-shrink: 0;
-	/* Extend into iPhone home-indicator zone */
-	padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ── Scrollbar hide ──────────────────────────────────────────── */
@@ -55,6 +64,3 @@ input[type='number']::-webkit-outer-spin-button {
 	margin: 0;
 }
 input[type='number'] { -moz-appearance: textfield; }
-
-/* ── Safe area helpers ───────────────────────────────────────── */
-.safe-top  { padding-top:  env(safe-area-inset-top,  0px); }
