@@ -35,10 +35,15 @@ html, body {
 /* Lock the app shell to the viewport — no overflow on rotation */
 #app-shell {
 	position: fixed;
-	inset: 0;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	/* Ensure it fills behind the home indicator */
+	padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Scrollable content area inside the fixed shell */

@@ -31,7 +31,7 @@
 	</main>
 
 	<!-- Bottom tab bar — always pinned -->
-	<nav class="safe-bottom shrink-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
+	<nav class="shrink-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-md">
 		<div class="flex">
 			{#each tabs as tab}
 				<a

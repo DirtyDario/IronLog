@@ -12,6 +12,8 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'dumbbell-fly', name: 'Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'db-incline-fly', name: 'Incline Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'cable-fly', name: 'Cable Fly', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'chest-fly-machine', name: 'Chest Fly Machine', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'decline-chest-machine', name: 'Decline Chest Press Machine', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'pushup', name: 'Push-Up', type: 'bodyweightReps', muscleGroup: 'chest' },
 	{ id: 'dip', name: 'Dip', type: 'bodyweightReps', muscleGroup: 'chest' },
 
@@ -30,6 +32,12 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{
 		id: 'dumbbell-shoulder-press',
 		name: 'Dumbbell Shoulder Press',
+		type: 'weightReps',
+		muscleGroup: 'shoulders'
+	},
+	{
+		id: 'shoulder-press-machine',
+		name: 'Shoulder Press Machine',
 		type: 'weightReps',
 		muscleGroup: 'shoulders'
 	},
