@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-orange-500: #f97316;
+}
+
+/* Safe area insets for iPhone notch/home bar */
+.safe-bottom {
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+	padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Scrollbar hide for webkit */
+::-webkit-scrollbar {
+	display: none;
+}
+
+* {
+	-webkit-tap-highlight-color: transparent;
+}
