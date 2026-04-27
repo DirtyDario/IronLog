@@ -24,10 +24,6 @@
 	}
 </script>
 
-<main id="app-content">
-	{@render children()}
-</main>
-
 <nav id="tab-bar">
 	<div class="flex">
 		{#each tabs as tab}
@@ -44,3 +40,7 @@
 		{/each}
 	</div>
 </nav>
+
+<main id="app-content">
+	{@render children()}
+</main>

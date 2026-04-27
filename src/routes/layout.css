@@ -17,23 +17,22 @@ html, body {
 	-webkit-tap-highlight-color: transparent;
 }
 
-/* Tab bar — fixed to bottom, above home indicator */
+/* Tab bar — fixed to TOP, sits below status bar */
 #tab-bar {
 	position: fixed;
-	bottom: 0;
+	top: 0;
 	left: 0;
 	right: 0;
 	z-index: 100;
 	background: #09090b;
-	border-top: 1px solid #27272a;
-	/* Push content above the iPhone home indicator */
-	padding-bottom: env(safe-area-inset-bottom, 16px);
+	border-bottom: 1px solid #27272a;
+	padding-top: env(safe-area-inset-top, 44px);
 }
 
-/* Content — normal flow, padded top for status bar, bottom for tab bar */
+/* Content — starts below tab bar */
 #app-content {
-	padding-top: env(safe-area-inset-top, 44px);
-	padding-bottom: calc(58px + env(safe-area-inset-bottom, 16px));
+	padding-top: calc(58px + env(safe-area-inset-top, 44px));
+	padding-bottom: env(safe-area-inset-bottom, 16px);
 	min-height: 100dvh;
 }
 
