@@ -4,57 +4,41 @@
 	--color-orange-500: #f97316;
 }
 
-/* ── Core reset ─────────────────────────────────────────────── */
-html {
-	height: 100%;
-	overflow: hidden;
-}
-
-body {
-	height: 100%;
-	overflow: hidden;
-	overscroll-behavior: none;
+html, body {
+	margin: 0;
+	padding: 0;
+	background: #09090b;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
-	background: #09090b;
+	overscroll-behavior: none;
 }
 
 * {
 	-webkit-tap-highlight-color: transparent;
 }
 
-/* ── Tab bar — fixed to TOP ───────────────────────────────────── */
+/* Tab bar — fixed to bottom, above home indicator */
 #tab-bar {
 	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	z-index: 50;
-	padding-top: env(safe-area-inset-top, 0px);
-	background: rgba(9, 9, 11, 0.97);
-	border-bottom: 1px solid #27272a;
-	-webkit-transform: translateZ(0);
-	transform: translateZ(0);
-}
-
-/* ── Scrollable content — padded so nothing hides behind top tab bar ─ */
-#app-content {
-	position: fixed;
-	/* 58px tab icons + safe area top */
-	top: calc(58px + env(safe-area-inset-top, 0px));
-	left: 0;
-	right: 0;
 	bottom: 0;
-	overflow-y: auto;
-	overflow-x: hidden;
-	-webkit-overflow-scrolling: touch;
-	overscroll-behavior-y: contain;
+	left: 0;
+	right: 0;
+	z-index: 100;
+	background: #09090b;
+	border-top: 1px solid #27272a;
+	/* Push content above the iPhone home indicator */
+	padding-bottom: env(safe-area-inset-bottom, 16px);
 }
 
-/* ── Scrollbar hide ──────────────────────────────────────────── */
+/* Content — normal flow, padded so it doesn't hide behind tab bar */
+/* 58px tab bar height + up to 34px home indicator = 92px safe padding */
+#app-content {
+	padding-bottom: calc(58px + env(safe-area-inset-bottom, 16px));
+	min-height: 100dvh;
+}
+
 ::-webkit-scrollbar { display: none; }
 
-/* ── Number input — hide spinners ───────────────────────────── */
 input[type='number']::-webkit-inner-spin-button,
 input[type='number']::-webkit-outer-spin-button {
 	-webkit-appearance: none;

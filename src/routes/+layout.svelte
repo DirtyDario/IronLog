@@ -24,16 +24,19 @@
 	}
 </script>
 
-<!-- Tab bar — fixed to TOP -->
+<main id="app-content">
+	{@render children()}
+</main>
+
 <nav id="tab-bar">
 	<div class="flex">
 		{#each tabs as tab}
 			<a
 				href={tab.href}
-				class="flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-xs transition-colors
+				class="flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-xs
 					{isActive(tab.href, $page.url.pathname)
 					? 'text-orange-500'
-					: 'text-zinc-500 active:text-zinc-300'}"
+					: 'text-zinc-500'}"
 			>
 				<span class="text-xl leading-none">{tab.icon}</span>
 				<span class="font-medium">{tab.label}</span>
@@ -41,8 +44,3 @@
 		{/each}
 	</div>
 </nav>
-
-<!-- Scrollable content area -->
-<main id="app-content">
-	{@render children()}
-</main>
