@@ -45,6 +45,8 @@
 			: 0
 	);
 
+	let editingName = $state(false);
+	let nameInput = $state('');
 	let showPicker = $state(false);
 	let showFinishConfirm = $state(false);
 	let showDiscardConfirm = $state(false);
@@ -97,38 +99,29 @@
 	}
 
 	// ── Placeholder cascade ────────────────────────────────────────────────────
-	// For each set at index i in a given workoutExercise:
-	//   1. Look backward through sets 0..i-1 for the most recent one with a typed value
-	//   2. Fall back to previousSets (last finished workout at same index)
+	// Weight cascades from previous sets / last workout. Reps intentionally blank.
 	function getPlaceholders(weId: string, setIndex: number) {
 		const sets = $activeWorkout.sets[weId] ?? [];
 		const prev = $activeWorkout.previousSets[weId];
 
-		// Walk backward through current workout sets for a typed weight / reps
 		let weight: number | undefined;
-		let reps: number | undefined;
 		let durationSec: number | undefined;
 		let distanceKm: number | undefined;
 
 		for (let j = setIndex - 1; j >= 0; j--) {
 			const s = sets[j];
-			if (weight == null && s.weight != null) weight = s.weight;
-			if (reps == null && s.reps != null) reps = s.reps;
-			if (durationSec == null && s.durationSec != null) durationSec = s.durationSec;
-			if (distanceKm == null && s.distanceM != null) distanceKm = s.distanceM / 1000;
-			if (weight != null && reps != null) break;
+			if (weight == null && s.weight != null) { weight = s.weight; break; }
 		}
 
 		// Fallback to last-workout same-index set
 		if (prev?.sets[setIndex]) {
 			const ps = prev.sets[setIndex];
 			if (weight == null && ps.weight != null) weight = ps.weight;
-			if (reps == null && ps.reps != null) reps = ps.reps;
 			if (durationSec == null && ps.durationSec != null) durationSec = ps.durationSec;
 			if (distanceKm == null && ps.distanceM != null) distanceKm = ps.distanceM / 1000;
 		}
 
-		return { weight, reps, durationSec, distanceKm };
+		return { weight, durationSec, distanceKm };
 	}
 
 	// ── Last workout summary text ─────────────────────────────────────────────
@@ -192,8 +185,29 @@
 <div class="flex flex-col gap-4 p-4 pt-4 pb-40">
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">{$activeWorkout.workout?.name ?? 'Workout'}</h1>
+		<div class="flex-1 min-w-0 mr-2">
+			{#if editingName}
+				<input
+					type="text"
+					bind:value={nameInput}
+					onblur={() => {
+						const trimmed = nameInput.trim();
+						if (trimmed) activeWorkout.renameWorkout(trimmed);
+						editingName = false;
+					}}
+					onkeydown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+					class="w-full rounded-lg bg-zinc-800 px-2 py-1 text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+					autofocus
+				/>
+			{:else}
+				<button
+					onclick={() => { nameInput = $activeWorkout.workout?.name ?? ''; editingName = true; }}
+					class="text-left w-full"
+					aria-label="Edit workout name"
+				>
+					<h1 class="text-2xl font-bold truncate">{$activeWorkout.workout?.name ?? 'Workout'} <span class="text-base text-zinc-600">✎</span></h1>
+				</button>
+			{/if}
 			<p class="text-sm text-zinc-400">{formatTime(elapsedSec)}</p>
 		</div>
 		<div class="flex gap-2">
@@ -283,7 +297,6 @@
 						index={i}
 						exerciseType={exercise?.type ?? 'weightReps'}
 						placeholderWeight={ph.weight}
-						placeholderReps={ph.reps}
 						placeholderDurationSec={ph.durationSec}
 						placeholderDistanceKm={ph.distanceKm}
 						onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}

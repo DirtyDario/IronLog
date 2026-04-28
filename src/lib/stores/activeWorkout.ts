@@ -221,6 +221,14 @@ function createActiveWorkoutStore() {
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [], previousSets: {}, lastDiscarded: null });
 		},
 
+		async renameWorkout(name: string) {
+			const state = get({ subscribe });
+			if (!state.workout) return;
+			await db.workouts.update(state.workout.id, { name, ...syncMeta() });
+			schedulePush();
+			update((s) => s.workout ? { ...s, workout: { ...s.workout, name } } : s);
+		},
+
 		async reorderExercises(newList: WorkoutExercise[]) {
 			const updated = newList.map((we, i) => ({ ...we, order: i }));
 			await Promise.all(

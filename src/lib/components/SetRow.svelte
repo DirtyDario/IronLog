@@ -5,9 +5,8 @@
 		set: ExerciseSet;
 		index: number;
 		exerciseType: ExerciseType;
-		// Cascade placeholders — shown greyed out when the input is empty
+		// Only weight placeholder cascades — reps are intentionally left blank each set
 		placeholderWeight?: number;
-		placeholderReps?: number;
 		placeholderDurationSec?: number;
 		placeholderDistanceKm?: number;
 		onComplete: () => void;
@@ -20,7 +19,6 @@
 		index,
 		exerciseType,
 		placeholderWeight,
-		placeholderReps,
 		placeholderDurationSec,
 		placeholderDistanceKm,
 		onComplete,
@@ -47,46 +45,15 @@
 		}
 	});
 
-	// Auto-complete: called on blur — if both required fields are valid and not yet
-	// completed, silently mark the set done WITHOUT triggering the rest timer
-	function maybeAutoComplete() {
-		if (set.completed) return;
-		let valid = false;
-		let changes: Partial<ExerciseSet> = {};
-
-		if (exerciseType === 'weightReps') {
-			const w = parseFloat(weight);
-			const r = parseInt(reps);
-			if (w > 0 && r > 0) {
-				valid = true;
-				changes = { weight: w, reps: r, completed: true };
-			}
-		} else if (exerciseType === 'bodyweightReps') {
-			const r = parseInt(reps);
-			if (r > 0) { valid = true; changes = { reps: r, completed: true }; }
-		} else if (exerciseType === 'time') {
-			const d = parseInt(durationSec);
-			if (d > 0) { valid = true; changes = { durationSec: d, completed: true }; }
-		} else if (exerciseType === 'distance') {
-			const dist = parseFloat(distanceKm);
-			if (dist > 0) { valid = true; changes = { distanceM: dist * 1000, completed: true }; }
-		}
-
-		if (valid) {
-			// onChange but NOT onComplete (no rest timer)
-			onChange(changes);
-		}
-	}
-
 	function handleComplete() {
 		// Manual tap: persist values + start rest timer
 		let changes: Partial<ExerciseSet> = { completed: true };
 		if (exerciseType === 'weightReps') {
 			const w = parseFloat(weight) || (placeholderWeight ?? undefined);
-			const r = parseInt(reps) || (placeholderReps ?? undefined);
+			const r = parseInt(reps) || undefined;
 			changes = { weight: w, reps: r, completed: true };
 		} else if (exerciseType === 'bodyweightReps') {
-			changes = { reps: parseInt(reps) || (placeholderReps ?? undefined), completed: true };
+			changes = { reps: parseInt(reps) || undefined, completed: true };
 		} else if (exerciseType === 'time') {
 			changes = { durationSec: parseInt(durationSec) || (placeholderDurationSec ?? undefined), completed: true };
 		} else if (exerciseType === 'distance') {
@@ -95,6 +62,11 @@
 		}
 		onChange(changes);
 		onComplete(); // triggers rest timer
+	}
+
+	function handleUncomplete() {
+		// Tap on already-completed set → uncomplete and make editable again
+		onChange({ completed: false });
 	}
 </script>
 
@@ -110,16 +82,16 @@
 				inputmode="decimal"
 				placeholder={placeholderWeight != null ? String(placeholderWeight) : 'kg'}
 				bind:value={weight}
-				onblur={() => { onChange({ weight: parseFloat(weight) || undefined }); maybeAutoComplete(); }}
+				onblur={() => onChange({ weight: parseFloat(weight) || undefined })}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
+				placeholder="reps"
 				bind:value={reps}
-				onblur={() => { onChange({ reps: parseInt(reps) || undefined }); maybeAutoComplete(); }}
+				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -127,9 +99,9 @@
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
+				placeholder="reps"
 				bind:value={reps}
-				onblur={() => { onChange({ reps: parseInt(reps) || undefined }); maybeAutoComplete(); }}
+				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -139,7 +111,7 @@
 				inputmode="numeric"
 				placeholder={placeholderDurationSec != null ? String(placeholderDurationSec) : 'sec'}
 				bind:value={durationSec}
-				onblur={() => { onChange({ durationSec: parseInt(durationSec) || undefined }); maybeAutoComplete(); }}
+				onblur={() => onChange({ durationSec: parseInt(durationSec) || undefined })}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -149,7 +121,7 @@
 				inputmode="decimal"
 				placeholder={placeholderDistanceKm != null ? String(placeholderDistanceKm) : 'km'}
 				bind:value={distanceKm}
-				onblur={() => { onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined }); maybeAutoComplete(); }}
+				onblur={() => onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined })}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -159,9 +131,9 @@
 	<!-- Complete / done button -->
 	{#if set.completed}
 		<button
-			onclick={onDelete}
-			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-green-500"
-			aria-label="Completed — tap to delete"
+			onclick={handleUncomplete}
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-green-500 active:text-zinc-400"
+			aria-label="Completed — tap to undo"
 		>
 			✓
 		</button>

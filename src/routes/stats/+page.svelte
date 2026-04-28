@@ -49,19 +49,19 @@
 	let exercisePrCounts: Record<string, number> = $state({});
 	let selectedExId: string | null = $state(null);
 	let prs: PersonalRecord[] = $state([]);
+	let sessionData: { date: string; value: number }[] = $state([]);
 
 	// Active section
 	let activeTab = $state<'overview' | 'frequency' | 'muscles' | 'progress' | 'bests'>('overview');
 
 	onMount(async () => {
-		const [totals, str, weekly, muscle, allBests, exs, allPrs] = await Promise.all([
+		const [totals, str, weekly, muscle, allBests, exs] = await Promise.all([
 			getLifetimeTotals(),
 			getStreak(),
 			getWeeklyFrequency(),
 			getMuscleDistribution(),
 			getAllTimeBests(),
-			db.exercises.orderBy('name').toArray(),
-			db.personalRecords.toArray()
+			db.exercises.orderBy('name').toArray()
 		]);
 		totalWorkouts = totals.totalWorkouts;
 		totalTimeSec = totals.totalTimeSec;
@@ -72,26 +72,64 @@
 		muscleData = muscle;
 		bests = allBests;
 
-		// Build PR count per exercise, keep only exercises with at least one PR
-		const counts: Record<string, number> = {};
-		for (const pr of allPrs) {
-			counts[pr.exerciseId] = (counts[pr.exerciseId] ?? 0) + 1;
+		// Build exercise list for Progress tab:
+		// Only show exercises that appear in at least one finished workout.
+		// Sort by number of times done (workouts containing it) descending.
+		const finishedWorkouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
+		const finishedWorkoutIds = new Set(finishedWorkouts.map((w) => w.id));
+		const allWEs = await db.workoutExercises.toArray();
+		const countsByEx: Record<string, number> = {};
+		for (const we of allWEs) {
+			if (finishedWorkoutIds.has(we.workoutId)) {
+				countsByEx[we.exerciseId] = (countsByEx[we.exerciseId] ?? 0) + 1;
+			}
 		}
-		exercisePrCounts = counts;
-		const exIds = new Set(Object.keys(counts));
-		// Sort by PR count descending, then alphabetically
+		const exIds = new Set(Object.keys(countsByEx));
 		exercises = exs
 			.filter((e) => exIds.has(e.id))
-			.sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || a.name.localeCompare(b.name));
+			.sort((a, b) => (countsByEx[b.id] ?? 0) - (countsByEx[a.id] ?? 0) || a.name.localeCompare(b.name));
+		exercisePrCounts = countsByEx;
 
 		loaded = true;
 	});
 
 	$effect(() => {
 		if (selectedExId) {
-			db.personalRecords.where('exerciseId').equals(selectedExId).sortBy('date').then((r) => {
-				prs = r;
-			});
+			sessionData = [];
+			prs = [];
+			// Load max weight (or reps/duration) per finished workout session for progress chart
+			(async () => {
+				// Also still load PRs for the "All-Time Best" badge
+				const prData = await db.personalRecords
+					.where('exerciseId').equals(selectedExId).sortBy('date');
+				prs = prData;
+
+				// Build per-session max values from actual sets
+				const wes = await db.workoutExercises.where('exerciseId').equals(selectedExId).toArray();
+				const workoutIds = [...new Set(wes.map((w) => w.workoutId))];
+				const workouts = await db.workouts
+					.where('id').anyOf(workoutIds)
+					.filter((w) => !!w.finishedAt)
+					.toArray();
+				workouts.sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
+
+				const sessionPoints: { date: string; value: number }[] = [];
+				for (const workout of workouts) {
+					const we = wes.find((w) => w.workoutId === workout.id);
+					if (!we) continue;
+					const sets = await db.sets
+						.where('workoutExerciseId').equals(we.id)
+						.filter((s) => s.completed && s.weight != null)
+						.toArray();
+					if (!sets.length) continue;
+					const maxWeight = Math.max(...sets.map((s) => s.weight!));
+					sessionPoints.push({
+						date: new Date(workout.finishedAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+						value: maxWeight
+					});
+				}
+				sessionData = sessionPoints;
+			})();
 		}
 	});
 
@@ -123,14 +161,12 @@
 
 	// Bug 17 fix: $derived.by() for multi-statement block, use as value not function call
 	let progressChartData = $derived.by(() => {
-		if (!prs.length) return null;
+		if (!sessionData.length) return null;
 		return {
-			labels: prs.map((pr) =>
-				new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-			),
+			labels: sessionData.map((p) => p.date),
 			datasets: [{
-				label: 'Est. 1RM (kg)',
-				data: prs.map((pr) => pr.estimatedOneRM ?? pr.weight ?? 0),
+				label: 'Max weight (kg)',
+				data: sessionData.map((p) => p.value),
 				borderColor: '#f97316',
 				backgroundColor: 'rgba(249,115,22,0.1)',
 				tension: 0.3,
