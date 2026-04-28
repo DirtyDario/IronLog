@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { db } from '$lib/db/schema';
 	import type { Exercise, MuscleGroup } from '$lib/db/schema';
+	import { onMount } from 'svelte';
+	import { schedulePush } from '$lib/services/sync';
 
 	interface Props {
 		onSelect: (exerciseId: string) => void;
@@ -25,10 +27,9 @@
 		'legs', 'glutes', 'core', 'cardio', 'full body', 'other'
 	];
 
-	$effect(() => {
-		db.exercises.orderBy('name').toArray().then((all) => {
-			exercises = all;
-		});
+	// Bug 2 fix: use onMount (runs once) instead of $effect (re-runs on every render)
+	onMount(async () => {
+		exercises = await db.exercises.orderBy('name').toArray();
 	});
 
 	let filtered = $derived(
@@ -37,7 +38,8 @@
 			: exercises
 	);
 
-	let grouped = $derived(() => {
+	// Bug 1 fix: $derived.by() for multi-statement block, value used directly (no call parens)
+	let grouped = $derived.by(() => {
 		const map = new Map<string, Exercise[]>();
 		for (const e of filtered) {
 			const g = e.muscleGroup ?? 'other';
@@ -57,13 +59,19 @@
 	async function addCustom() {
 		if (!customName.trim()) return;
 		const id = crypto.randomUUID();
+		// Bug 14 fix: add sync metadata so custom exercises get pushed to Supabase
 		await db.exercises.add({
 			id,
 			name: customName.trim(),
 			type: 'weightReps',
 			muscleGroup: customMuscle,
-			isCustom: true
-		});
+			isCustom: true,
+			_synced: false,
+			_lastModified: Date.now()
+		} as any);
+		schedulePush();
+		// Refresh exercise list to show the new entry
+		exercises = await db.exercises.orderBy('name').toArray();
 		onSelect(id);
 	}
 </script>
@@ -126,7 +134,7 @@
 
 	<!-- List -->
 	<div class="flex-1 overflow-y-auto px-4 pb-8">
-		{#each grouped() as [group, exs]}
+		{#each grouped as [group, exs]}
 			<div class="mb-4">
 				<p class="mb-2 mt-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 capitalize">
 					{group}

@@ -9,14 +9,16 @@
 		<div class="flex-1">
 			<div class="flex items-center justify-between mb-1">
 				<span class="text-xs font-medium text-orange-400">Rest Timer</span>
-				<span class="text-xs text-zinc-500">{formatTime($restTimer.total)}s preset</span>
+			<!-- Bug 11 fix: remove erroneous 's' suffix (formatTime already formats as m:ss) -->
+				<span class="text-xs text-zinc-500">{formatTime($restTimer.total)} preset</span>
 			</div>
 			<!-- Progress bar -->
 			<div class="h-1.5 w-full rounded-full bg-zinc-800">
-				<div
-					class="h-full rounded-full bg-orange-500 transition-all duration-1000"
-					style="width: {($restTimer.remaining / $restTimer.total) * 100}%"
-				></div>
+			<!-- Bug 10 fix: guard division by zero when total is 0 -->
+			<div
+				class="h-full rounded-full bg-orange-500 transition-all duration-1000"
+				style="width: {$restTimer.total > 0 ? ($restTimer.remaining / $restTimer.total) * 100 : 0}%"
+			></div>
 			</div>
 		</div>
 		<div class="text-2xl font-bold tabular-nums text-orange-400 w-14 text-right">

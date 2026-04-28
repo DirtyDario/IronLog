@@ -22,12 +22,18 @@
 	let totalReps = $state(0);
 
 	onMount(async () => {
+		// Bug 5 fix: capture workoutId before any async, guard undefined
 		const id = $page.params.id;
 		workout = (await db.workouts.get(id)) ?? null;
 		if (!workout) { goto('/history'); return; }
+		const workoutStart = new Date(workout.date).getTime();
+		const workoutEnd = workout.finishedAt ? new Date(workout.finishedAt).getTime() : Date.now();
 
 		const wes = await db.workoutExercises.where('workoutId').equals(id).sortBy('order');
 		const result: ExerciseSummary[] = [];
+
+		// Bug 7 fix: use local accumulators, assign $state once after loop
+		let volTotal = 0, setsTotal = 0, repsTotal = 0;
 
 		for (const we of wes) {
 			const exercise = await db.exercises.get(we.exerciseId);
@@ -51,20 +57,25 @@
 				}
 			}
 
-			// Check if this is a PR
+			// Bug 6 fix: only flag as new PR if the PR was recorded during THIS workout's time window
 			const allPRs = await db.personalRecords.where('exerciseId').equals(exercise.id).sortBy('date');
 			const recentPR = allPRs[allPRs.length - 1];
 			const isNewPR = recentPR
-				? new Date(recentPR.date).getTime() > (workout?.date ? new Date(workout.date).getTime() - 5000 : 0)
+				? new Date(recentPR.date).getTime() >= workoutStart &&
+				  new Date(recentPR.date).getTime() <= workoutEnd
 				: false;
 
-			totalVolume += vol;
-			totalSets += completedSets.length;
-			totalReps += completedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
+			volTotal += vol;
+			setsTotal += completedSets.length;
+			repsTotal += completedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
 
 			result.push({ exercise, sets: completedSets, totalVolume: vol, bestSet, bestOneRM, isNewPR });
 		}
 
+		// Assign accumulators to $state once (avoids += on $state causing double-count on remount)
+		totalVolume = volTotal;
+		totalSets = setsTotal;
+		totalReps = repsTotal;
 		summaries = result;
 	});
 

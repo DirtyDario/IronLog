@@ -17,7 +17,9 @@
 		const result = [];
 		for (const we of wes) {
 			const exercise = await db.exercises.get(we.exerciseId);
-			const sets = await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order');
+			// Bug 22 fix: only show completed sets in history view
+			const sets = (await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order'))
+				.filter((s) => s.completed);
 			if (exercise) result.push({ we, exercise, sets });
 		}
 		exercises = result;

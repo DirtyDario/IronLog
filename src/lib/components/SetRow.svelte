@@ -18,15 +18,15 @@
 	let durationSec = $state('');
 	let distanceKm = $state('');
 
-	// Sync from incoming prop only once on mount via $effect
-	let initialised = false;
+	// Bug 3 fix: track set.id to re-initialise when a different set is passed as prop
+	let currentSetId = $state('');
 	$effect(() => {
-		if (!initialised) {
+		if (set.id !== currentSetId) {
+			currentSetId = set.id;
 			weight = set.weight?.toString() ?? '';
 			reps = set.reps?.toString() ?? '';
 			durationSec = set.durationSec?.toString() ?? '';
 			distanceKm = set.distanceM ? (set.distanceM / 1000).toString() : '';
-			initialised = true;
 		}
 	});
 

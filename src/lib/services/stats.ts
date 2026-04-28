@@ -3,7 +3,7 @@ import { db } from '$lib/db/schema';
 // ── Lifetime totals ──────────────────────────────────────────────────────────
 
 export async function getLifetimeTotals() {
-	const workouts = await db.workouts.toArray();
+	const workouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
 	const totalWorkouts = workouts.length; // count all saved workouts
 	const totalTimeSec = workouts.reduce((sum, w) => sum + (w.durationSec ?? 0), 0);
 
@@ -17,41 +17,32 @@ export async function getLifetimeTotals() {
 
 // ── Training streak (consecutive weeks with ≥1 workout) ─────────────────────
 
+// Bug 18 fix: use Monday-based date arithmetic instead of fragile ISO week strings
 export async function getStreak(): Promise<number> {
-	const workouts = await db.workouts.toArray();
-
+	const workouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
 	if (!workouts.length) return 0;
 
-	// Get unique ISO week strings (YYYY-Www)
-	const weeks = new Set(
-		workouts.map((w) => {
-			const d = new Date(w.date);
-			const jan4 = new Date(d.getFullYear(), 0, 4);
-			const week = Math.ceil(((d.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7);
-			return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
-		})
-	);
-
-	// Current week
-	const now = new Date();
-	const jan4 = new Date(now.getFullYear(), 0, 4);
-	const currentWeek = Math.ceil(((now.getTime() - jan4.getTime()) / 86400000 + jan4.getDay() + 1) / 7);
-
-	let streak = 0;
-	let checkYear = now.getFullYear();
-	let checkWeek = currentWeek;
-
-	while (true) {
-		const key = `${checkYear}-W${String(checkWeek).padStart(2, '0')}`;
-		if (!weeks.has(key)) break;
-		streak++;
-		checkWeek--;
-		if (checkWeek < 1) {
-			checkYear--;
-			checkWeek = 52;
-		}
+	// Get the Monday of a given date (week identifier)
+	function weekMonday(d: Date): number {
+		const date = new Date(d);
+		const day = date.getDay(); // 0=Sun
+		const diff = (day === 0 ? -6 : 1 - day); // shift to Monday
+		date.setDate(date.getDate() + diff);
+		date.setHours(0, 0, 0, 0);
+		return date.getTime();
 	}
 
+	const trainedWeeks = new Set(workouts.map((w) => weekMonday(new Date(w.date))));
+
+	const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+	const thisWeek = weekMonday(new Date());
+
+	let streak = 0;
+	let check = thisWeek;
+	while (trainedWeeks.has(check)) {
+		streak++;
+		check -= MS_PER_WEEK;
+	}
 	return streak;
 }
 

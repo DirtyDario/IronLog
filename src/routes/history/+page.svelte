@@ -6,7 +6,10 @@
 	let workouts: Workout[] = $state([]);
 
 	onMount(async () => {
-		workouts = await db.workouts.orderBy('date').reverse().toArray();
+		// Bug 8 fix: only show finished workouts in history
+		workouts = await db.workouts.orderBy('date').reverse()
+			.filter((w) => !!w.finishedAt)
+			.toArray();
 	});
 
 	function formatDate(d: Date) {
@@ -23,8 +26,8 @@
 		return `${m}m`;
 	}
 
-	// Group by month
-	let grouped = $derived(() => {
+	// Bug 1 fix: $derived.by() for multi-statement derived, used as value not function call
+	let grouped = $derived.by(() => {
 		const map = new Map<string, Workout[]>();
 		for (const w of workouts) {
 			const key = new Date(w.date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -44,7 +47,7 @@
 			<p class="mt-2 font-medium">No workouts yet</p>
 		</div>
 	{:else}
-		{#each grouped() as [month, wks]}
+		{#each grouped as [month, wks]}
 			<section class="mb-6">
 				<h2 class="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">{month}</h2>
 				<div class="flex flex-col gap-2">

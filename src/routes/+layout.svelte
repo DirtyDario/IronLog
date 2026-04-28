@@ -6,6 +6,8 @@
 	import { db } from '$lib/db/schema';
 	import { auth } from '$lib/stores/auth';
 	import { syncNow } from '$lib/services/sync';
+	import { activeWorkout } from '$lib/stores/activeWorkout';
+	import { get } from 'svelte/store';
 
 	let { children } = $props();
 
@@ -13,10 +15,11 @@
 		// Seed default exercises
 		await seedDefaultExercises();
 
-		// Clean up orphaned unfinished workouts from previous sessions (older than 12h)
-		const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+		// Bug 24 fix: never delete the currently active workout, increase cutoff to 48h
+		const activeId = get(activeWorkout).workout?.id;
+		const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
 		const orphaned = await db.workouts
-			.filter((w) => !w.finishedAt && new Date(w.date) < cutoff)
+			.filter((w) => !w.finishedAt && w.id !== activeId && new Date(w.date) < cutoff)
 			.toArray();
 		for (const w of orphaned) {
 			const wes = await db.workoutExercises.where('workoutId').equals(w.id).toArray();
@@ -30,17 +33,18 @@
 		// Initialize auth
 		auth.init();
 
-		// Sync once when user is confirmed signed in
+		// Bug 9 fix: store unsub and return it so Svelte cleans up on unmount
 		let hasSynced = false;
-		auth.subscribe((state) => {
+		const unsub = auth.subscribe((state) => {
 			if (!state.loading && state.user && !hasSynced) {
 				hasSynced = true;
 				syncNow().catch(console.error);
 			}
 			if (!state.user) {
-				hasSynced = false; // reset on sign out
+				hasSynced = false;
 			}
 		});
+		return unsub;
 	});
 
 	const tabs = [

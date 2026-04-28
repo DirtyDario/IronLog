@@ -107,7 +107,8 @@
 		}]
 	});
 
-	let progressChartData = $derived(() => {
+	// Bug 17 fix: $derived.by() for multi-statement block, use as value not function call
+	let progressChartData = $derived.by(() => {
 		if (!prs.length) return null;
 		return {
 			labels: prs.map((pr) =>
@@ -304,11 +305,11 @@
 				{/each}
 			</select>
 
-			{#if selectedExId && progressChartData()}
+			{#if selectedExId && progressChartData}
 				<div class="rounded-2xl bg-zinc-900 p-4">
 					<p class="mb-3 font-semibold">{selectedExercise?.name}</p>
 					<div class="h-48">
-						<Line data={progressChartData()!} options={chartOpts} />
+						<Line data={progressChartData} options={chartOpts} />
 					</div>
 					{#if prs.length}
 						{@const best = prs.reduce((b, pr) => ((pr.estimatedOneRM ?? 0) > (b.estimatedOneRM ?? 0) ? pr : b))}

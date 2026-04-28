@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { activeWorkout } from '$lib/stores/activeWorkout';
 	import { restTimer, formatTime } from '$lib/stores/restTimer';
 	import { db } from '$lib/db/schema';
@@ -13,13 +14,35 @@
 
 	const FLIP_MS = 200;
 
-	// Local copy of the list — updated optimistically during drag, persisted on drop
+	// Local copy of exercise list for DnD — separate from store to avoid mid-drag resets
 	let exercises = $state<WorkoutExercise[]>([]);
+	let isDragging = $state(false);
 
-	// Keep local list in sync when store changes (e.g. after adding an exercise)
+	// Bug 16 fix: only sync from store when exercise IDs change (add/remove), not on every set update
 	$effect(() => {
-		exercises = [...$activeWorkout.workoutExercises];
+		const incoming = $activeWorkout.workoutExercises;
+		if (!isDragging && incoming.map((w) => w.id).join() !== exercises.map((w) => w.id).join()) {
+			exercises = [...incoming];
+		}
 	});
+
+	// Bug 25 fix: tick every second for elapsed time display
+	let now = $state(Date.now());
+	onMount(() => {
+		// Bug 4 fix: check redirect in onMount (synchronous, no setTimeout race)
+		if (!$activeWorkout.workout) {
+			goto('/');
+			return;
+		}
+		const interval = setInterval(() => { now = Date.now(); }, 1000);
+		return () => clearInterval(interval);
+	});
+
+	let elapsedSec = $derived(
+		$activeWorkout.startedAt
+			? Math.floor((now - new Date($activeWorkout.startedAt).getTime()) / 1000)
+			: 0
+	);
 
 	let showPicker = $state(false);
 	let showFinishConfirm = $state(false);
@@ -37,22 +60,14 @@
 		}
 	});
 
-	$effect(() => {
-		if (!$activeWorkout.workout && typeof window !== 'undefined') {
-			setTimeout(() => {
-				if (!$activeWorkout.workout) goto('/');
-			}, 100);
-		}
-	});
-
 	function handleConsider(e: CustomEvent<DndEvent<WorkoutExercise>>) {
-		// Update local list immediately so animation plays smoothly
+		isDragging = true;
 		exercises = e.detail.items;
 	}
 
 	function handleFinalize(e: CustomEvent<DndEvent<WorkoutExercise>>) {
+		isDragging = false;
 		exercises = e.detail.items;
-		// Persist the new order
 		activeWorkout.reorderExercises(e.detail.items);
 	}
 
@@ -67,20 +82,18 @@
 	}
 
 	async function handleFinish() {
+		// Bug 5 fix: guard undefined, prevent double-tap
 		const workoutId = $activeWorkout.workout?.id;
+		if (!workoutId) return;
 		await activeWorkout.finish();
+		// Bug 12 fix: navigate directly — no $effect-based redirect will fire because
+		// goto() is called synchronously here before the effect re-runs
 		goto(`/workout/summary/${workoutId}`);
 	}
 
 	async function handleDiscard() {
 		await activeWorkout.discard();
 		goto('/');
-	}
-
-	function elapsedTime() {
-		if (!$activeWorkout.startedAt) return '0:00';
-		const sec = Math.floor((Date.now() - new Date($activeWorkout.startedAt).getTime()) / 1000);
-		return formatTime(sec);
 	}
 </script>
 
@@ -103,7 +116,7 @@
 	<div class="flex items-center justify-between">
 		<div>
 			<h1 class="text-2xl font-bold">{$activeWorkout.workout?.name ?? 'Workout'}</h1>
-			<p class="text-sm text-zinc-400">{elapsedTime()}</p>
+			<p class="text-sm text-zinc-400">{formatTime(elapsedSec)}</p>
 		</div>
 		<div class="flex gap-2">
 			<button

@@ -21,9 +21,12 @@
 	// Local working copy — updated immediately on consider for smooth animation
 	let items: Item[] = $state([]);
 
-	// Keep local copy in sync whenever savedItems changes (add/remove)
+	let isDragging = $state(false);
+
+	// Bug 15 fix: only sync items from savedItems when not mid-drag
+	// (overwriting items during a drag breaks svelte-dnd-action)
 	$effect(() => {
-		items = [...savedItems];
+		if (!isDragging) items = [...savedItems];
 	});
 
 	let showPicker = $state(false);
@@ -76,15 +79,21 @@
 			_lastModified: Date.now()
 		});
 		schedulePush();
+		// Bug 23 fix: update in-memory state so controlled inputs don't revert
+		savedItems = savedItems.map((i) =>
+			i.id === reId ? { ...i, re: { ...i.re, targetSets, targetReps } } : i
+		);
 	}
 
 	// During drag — update local copy only, no DB writes (keeps animation smooth)
 	function handleConsider(e: CustomEvent<DndEvent<Item>>) {
+		isDragging = true;
 		items = e.detail.items;
 	}
 
 	// On drop — persist new order to DB
 	async function handleFinalize(e: CustomEvent<DndEvent<Item>>) {
+		isDragging = false;
 		items = e.detail.items;
 		savedItems = e.detail.items;
 		await Promise.all(

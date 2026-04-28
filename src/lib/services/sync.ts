@@ -50,11 +50,6 @@ export function schedulePush() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function toSupabaseDate(d: Date | undefined | null): string | null {
-	if (!d) return null;
-	return new Date(d).toISOString();
-}
-
 function getUserId(): string | null {
 	// We call supabase.auth.getUser() async, but for sync we get it from session
 	return null; // populated during sync
@@ -82,9 +77,11 @@ export async function syncNow(): Promise<void> {
 // ─── Push ─────────────────────────────────────────────────────────────────────
 
 async function pushUnsynced(userId: string) {
+	// Bug 20 fix: use Dexie index instead of full table scan (booleans stored as 0/1)
 	// Exercises — only custom ones
 	const unsyncedExercises = await db.exercises
-		.filter((e) => e.isCustom === true && (e as any)._synced === false)
+		.where('_synced').equals(0)
+		.filter((e) => e.isCustom === true)
 		.toArray();
 	if (unsyncedExercises.length) {
 		const rows = unsyncedExercises.map((e) => ({
@@ -104,7 +101,7 @@ async function pushUnsynced(userId: string) {
 
 	// Workouts
 	const unsyncedWorkouts = await db.workouts
-		.filter((w) => (w as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedWorkouts.length) {
 		const rows = unsyncedWorkouts.map((w) => ({
@@ -124,7 +121,7 @@ async function pushUnsynced(userId: string) {
 
 	// WorkoutExercises
 	const unsyncedWEs = await db.workoutExercises
-		.filter((we) => (we as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedWEs.length) {
 		const rows = unsyncedWEs.map((we) => ({
@@ -143,7 +140,7 @@ async function pushUnsynced(userId: string) {
 
 	// Sets
 	const unsyncedSets = await db.sets
-		.filter((s) => (s as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedSets.length) {
 		const rows = unsyncedSets.map((s) => ({
@@ -167,7 +164,7 @@ async function pushUnsynced(userId: string) {
 
 	// Routines
 	const unsyncedRoutines = await db.routines
-		.filter((r) => (r as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedRoutines.length) {
 		const rows = unsyncedRoutines.map((r) => ({
@@ -184,7 +181,7 @@ async function pushUnsynced(userId: string) {
 
 	// RoutineExercises
 	const unsyncedREs = await db.routineExercises
-		.filter((re) => (re as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedREs.length) {
 		const rows = unsyncedREs.map((re) => ({
@@ -204,7 +201,7 @@ async function pushUnsynced(userId: string) {
 
 	// PersonalRecords
 	const unsyncedPRs = await db.personalRecords
-		.filter((pr) => (pr as any)._synced === false)
+		.where('_synced').equals(0)
 		.toArray();
 	if (unsyncedPRs.length) {
 		const rows = unsyncedPRs.map((pr) => ({

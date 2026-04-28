@@ -31,6 +31,11 @@
 	}
 
 	async function startFromRoutine(routineId: string, routineName: string) {
+		// Bug 13 fix: if workout already active, redirect there instead of silently overwriting it
+		if ($activeWorkout.workout) {
+			goto('/workout/active');
+			return;
+		}
 		const workout = await activeWorkout.start(routineName);
 		const routineExercises = await db.routineExercises
 			.where('routineId')
