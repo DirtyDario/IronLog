@@ -4,32 +4,32 @@
 
 	let email = $state('');
 	let otpCode = $state('');
-	let step = $state<'email' | 'code' | 'done'>('email');
+	let step = $state<'email' | 'code'>('email');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let message = $state<string | null>(null);
 
 	async function sendOtp() {
 		if (!email.trim()) return;
 		loading = true;
 		error = null;
-		// Request OTP — no emailRedirectTo so no magic link is sent,
-		// just a 6-digit code the user types in here inside the PWA.
 		const { error: err } = await supabase.auth.signInWithOtp({
 			email: email.trim(),
-			options: { shouldCreateUser: true }
+			options: {
+				shouldCreateUser: true,
+				// No emailRedirectTo — suppresses the magic link button in the email
+				// so the user only sees the 6-digit code
+			}
 		});
 		loading = false;
 		if (err) {
 			error = err.message;
 		} else {
 			step = 'code';
-			message = `Code sent to ${email.trim()}`;
 		}
 	}
 
 	async function verifyOtp() {
-		if (!otpCode.trim()) return;
+		if (otpCode.trim().length < 6) return;
 		loading = true;
 		error = null;
 		const { error: err } = await supabase.auth.verifyOtp({
@@ -40,10 +40,9 @@
 		loading = false;
 		if (err) {
 			error = err.message;
-		} else {
-			step = 'done';
-			message = null;
+			otpCode = '';
 		}
+		// on success auth store updates automatically via onAuthStateChange
 	}
 
 	async function handleSignOut() {
@@ -51,8 +50,14 @@
 		step = 'email';
 		email = '';
 		otpCode = '';
-		message = null;
 		error = null;
+	}
+
+	// Auto-verify when 6 digits entered
+	function handleCodeInput(e: Event) {
+		const val = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6);
+		otpCode = val;
+		if (val.length === 6) verifyOtp();
 	}
 </script>
 
@@ -70,7 +75,7 @@
 				<p class="font-semibold text-base break-all">{$auth.user.email}</p>
 			</div>
 			<div class="rounded-xl bg-zinc-800 p-3">
-				<p class="text-xs text-zinc-400">Your workouts sync automatically across devices while you're signed in.</p>
+				<p class="text-xs text-zinc-400">Your workouts sync automatically across devices.</p>
 			</div>
 			<button
 				onclick={handleSignOut}
@@ -81,10 +86,9 @@
 		</div>
 
 	{:else if step === 'email'}
-		<!-- Step 1: enter email -->
 		<div class="rounded-2xl bg-zinc-900 p-5 flex flex-col gap-4">
+			<p class="text-sm text-zinc-400">Sign in to sync your workouts. We'll email you a 6-digit code — <span class="text-white font-medium">don't tap the link in the email, just copy the code.</span></p>
 			<div>
-				<p class="text-sm text-zinc-400 mb-4">Sign in to sync your workouts across devices. We'll send a 6-digit code to your email.</p>
 				<label for="email-input" class="text-xs text-zinc-500 block mb-1">Email</label>
 				<input
 					id="email-input"
@@ -97,9 +101,7 @@
 					class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
 				/>
 			</div>
-			{#if error}
-				<p class="text-sm text-red-400">{error}</p>
-			{/if}
+			{#if error}<p class="text-sm text-red-400">{error}</p>{/if}
 			<button
 				onclick={sendOtp}
 				disabled={loading || !email.trim()}
@@ -109,39 +111,45 @@
 			</button>
 		</div>
 
-	{:else if step === 'code'}
-		<!-- Step 2: enter 6-digit code -->
+	{:else}
+		<!-- Step 2: enter code -->
 		<div class="rounded-2xl bg-zinc-900 p-5 flex flex-col gap-4">
-			{#if message}
-				<p class="text-sm text-zinc-400">{message}</p>
-			{/if}
+			<div class="text-center">
+				<p class="text-sm text-zinc-400 mb-1">Code sent to</p>
+				<p class="font-semibold">{email}</p>
+			</div>
+			<div class="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3">
+				<p class="text-xs text-orange-300 text-center">⚠️ Open your email app, copy the 6-digit code, and paste it below. Don't tap the link in the email.</p>
+			</div>
 			<div>
-				<label for="otp-input" class="text-xs text-zinc-500 block mb-1">6-digit code</label>
+				<label for="otp-input" class="text-xs text-zinc-500 block mb-1 text-center">6-digit code</label>
 				<input
 					id="otp-input"
 					type="text"
 					inputmode="numeric"
 					autocomplete="one-time-code"
-					placeholder="123456"
+					placeholder="000000"
 					maxlength="6"
-					bind:value={otpCode}
-					onkeydown={(e) => e.key === 'Enter' && verifyOtp()}
-					class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-2xl text-center tracking-widest font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+					value={otpCode}
+					oninput={handleCodeInput}
+					class="w-full rounded-xl bg-zinc-800 px-4 py-4 text-3xl text-center tracking-[0.5em] font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
 				/>
 			</div>
-			{#if error}
-				<p class="text-sm text-red-400">{error}</p>
+			{#if error}<p class="text-sm text-red-400 text-center">{error}</p>{/if}
+			{#if loading}
+				<p class="text-center text-sm text-zinc-400">Verifying…</p>
+			{:else}
+				<button
+					onclick={verifyOtp}
+					disabled={otpCode.trim().length < 6}
+					class="w-full rounded-xl bg-orange-500 py-3 font-bold text-white active:bg-orange-600 disabled:opacity-50"
+				>
+					Verify Code
+				</button>
 			{/if}
 			<button
-				onclick={verifyOtp}
-				disabled={loading || otpCode.trim().length < 6}
-				class="w-full rounded-xl bg-orange-500 py-3 font-bold text-white active:bg-orange-600 disabled:opacity-50"
-			>
-				{loading ? 'Verifying…' : 'Verify Code'}
-			</button>
-			<button
-				onclick={() => { step = 'email'; error = null; message = null; }}
-				class="text-sm text-zinc-500 text-center active:text-zinc-300"
+				onclick={() => { step = 'email'; error = null; otpCode = ''; }}
+				class="text-sm text-zinc-500 text-center"
 			>
 				← Use a different email
 			</button>

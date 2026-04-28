@@ -10,7 +10,8 @@
 
 	const FLIP_MS = 200;
 
-	type Item = { re: RoutineExercise; exercise: Exercise };
+	// dragHandleZone requires a top-level `id` field on each item
+	type Item = { id: string; re: RoutineExercise; exercise: Exercise };
 
 	let routine: Routine | null = $state(null);
 	let items: Item[] = $state([]);
@@ -28,7 +29,7 @@
 		const out: Item[] = [];
 		for (const re of res) {
 			const exercise = await db.exercises.get(re.exerciseId);
-			if (exercise) out.push({ re, exercise });
+			if (exercise) out.push({ id: re.id, re, exercise });
 		}
 		items = out;
 	}
