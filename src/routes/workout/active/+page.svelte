@@ -137,14 +137,16 @@
 			{@const exercise = exerciseMap[we.exerciseId]}
 			{@const sets = $activeWorkout.sets[we.id] ?? []}
 			<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
-				<div class="mb-3 flex items-center gap-3">
-					<!-- Drag handle — only this triggers drag -->
+				<div class="mb-3 flex items-center gap-2">
+					<!-- Drag handle — bigger tap area, same icon size -->
 					<div
 						use:dragHandle
 						role="button"
 						tabindex="0"
 						aria-label="Drag to reorder"
-						class="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-500 px-1 text-xl leading-none flex-shrink-0"
+						class="cursor-grab active:cursor-grabbing touch-none select-none
+						       text-zinc-500 text-xl leading-none flex-shrink-0
+						       flex items-center justify-center w-10 h-10 -ml-1 rounded-lg"
 					>
 						⠿
 					</div>

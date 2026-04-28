@@ -14,11 +14,7 @@
 		error = null;
 		const { error: err } = await supabase.auth.signInWithOtp({
 			email: email.trim(),
-			options: {
-				shouldCreateUser: true,
-				// No emailRedirectTo — suppresses the magic link button in the email
-				// so the user only sees the 6-digit code
-			}
+			options: { shouldCreateUser: true }
 		});
 		loading = false;
 		if (err) {
@@ -42,7 +38,6 @@
 			error = err.message;
 			otpCode = '';
 		}
-		// on success auth store updates automatically via onAuthStateChange
 	}
 
 	async function handleSignOut() {
@@ -53,7 +48,6 @@
 		error = null;
 	}
 
-	// Auto-verify when 6 digits entered
 	function handleCodeInput(e: Event) {
 		const val = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6);
 		otpCode = val;
@@ -68,14 +62,13 @@
 		<p class="text-zinc-500 text-sm">Loading…</p>
 
 	{:else if $auth.user}
-		<!-- Signed in -->
 		<div class="rounded-2xl bg-zinc-900 p-5 flex flex-col gap-4">
 			<div>
 				<p class="text-xs text-zinc-500 mb-1">Signed in as</p>
 				<p class="font-semibold text-base break-all">{$auth.user.email}</p>
 			</div>
 			<div class="rounded-xl bg-zinc-800 p-3">
-				<p class="text-xs text-zinc-400">Your workouts sync automatically across devices.</p>
+				<p class="text-xs text-zinc-400">Workouts sync automatically across devices.</p>
 			</div>
 			<button
 				onclick={handleSignOut}
@@ -87,7 +80,10 @@
 
 	{:else if step === 'email'}
 		<div class="rounded-2xl bg-zinc-900 p-5 flex flex-col gap-4">
-			<p class="text-sm text-zinc-400">Sign in to sync your workouts. We'll email you a 6-digit code — <span class="text-white font-medium">don't tap the link in the email, just copy the code.</span></p>
+			<p class="text-sm text-zinc-400">
+				Enter your email. You'll get a 6-digit code —
+				<span class="text-orange-400 font-medium">look for the code in the email, don't tap the link.</span>
+			</p>
 			<div>
 				<label for="email-input" class="text-xs text-zinc-500 block mb-1">Email</label>
 				<input
@@ -112,17 +108,26 @@
 		</div>
 
 	{:else}
-		<!-- Step 2: enter code -->
 		<div class="rounded-2xl bg-zinc-900 p-5 flex flex-col gap-4">
 			<div class="text-center">
 				<p class="text-sm text-zinc-400 mb-1">Code sent to</p>
 				<p class="font-semibold">{email}</p>
 			</div>
-			<div class="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3">
-				<p class="text-xs text-orange-300 text-center">⚠️ Open your email app, copy the 6-digit code, and paste it below. Don't tap the link in the email.</p>
+
+			<!-- Clear warning about the link -->
+			<div class="rounded-xl bg-zinc-800 p-4 flex flex-col gap-2">
+				<p class="text-sm font-semibold text-white">Check your email</p>
+				<p class="text-xs text-zinc-400 leading-relaxed">
+					The email contains a link and a 6-digit code.
+					<span class="text-orange-400 font-medium">Do not tap the link</span> — it opens in Safari and won't log you in here.
+				</p>
+				<p class="text-xs text-zinc-400 leading-relaxed">
+					Instead, <span class="text-white font-medium">copy the 6-digit number</span> from the email and paste it below.
+				</p>
 			</div>
+
 			<div>
-				<label for="otp-input" class="text-xs text-zinc-500 block mb-1 text-center">6-digit code</label>
+				<label for="otp-input" class="text-xs text-zinc-500 block mb-2 text-center">6-digit code</label>
 				<input
 					id="otp-input"
 					type="text"
@@ -135,7 +140,11 @@
 					class="w-full rounded-xl bg-zinc-800 px-4 py-4 text-3xl text-center tracking-[0.5em] font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
 				/>
 			</div>
-			{#if error}<p class="text-sm text-red-400 text-center">{error}</p>{/if}
+
+			{#if error}
+				<p class="text-sm text-red-400 text-center">{error}</p>
+			{/if}
+
 			{#if loading}
 				<p class="text-center text-sm text-zinc-400">Verifying…</p>
 			{:else}
@@ -147,11 +156,12 @@
 					Verify Code
 				</button>
 			{/if}
+
 			<button
 				onclick={() => { step = 'email'; error = null; otpCode = ''; }}
-				class="text-sm text-zinc-500 text-center"
+				class="text-sm text-zinc-500 text-center py-1"
 			>
-				← Use a different email
+				← Try a different email
 			</button>
 		</div>
 	{/if}
