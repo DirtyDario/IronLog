@@ -5,24 +5,41 @@
 		set: ExerciseSet;
 		index: number;
 		exerciseType: ExerciseType;
+		// Cascade placeholders — shown greyed out when the input is empty
+		placeholderWeight?: number;
+		placeholderReps?: number;
+		placeholderDurationSec?: number;
+		placeholderDistanceKm?: number;
 		onComplete: () => void;
 		onChange: (changes: Partial<ExerciseSet>) => void;
 		onDelete: () => void;
 	}
 
-	let { set, index, exerciseType, onComplete, onChange, onDelete }: Props = $props();
+	let {
+		set,
+		index,
+		exerciseType,
+		placeholderWeight,
+		placeholderReps,
+		placeholderDurationSec,
+		placeholderDistanceKm,
+		onComplete,
+		onChange,
+		onDelete
+	}: Props = $props();
 
-	// Use local mutable state, initialised from prop (user types here)
+	// Use local mutable state — empty until the user types
 	let weight = $state('');
 	let reps = $state('');
 	let durationSec = $state('');
 	let distanceKm = $state('');
 
-	// Bug 3 fix: track set.id to re-initialise when a different set is passed as prop
+	// Re-initialise when a different set is passed as prop (Bug 3 fix)
 	let currentSetId = $state('');
 	$effect(() => {
 		if (set.id !== currentSetId) {
 			currentSetId = set.id;
+			// Only populate if the set already has a stored value (e.g. restored from DB)
 			weight = set.weight?.toString() ?? '';
 			reps = set.reps?.toString() ?? '';
 			durationSec = set.durationSec?.toString() ?? '';
@@ -30,17 +47,54 @@
 		}
 	});
 
-	function handleComplete() {
+	// Auto-complete: called on blur — if both required fields are valid and not yet
+	// completed, silently mark the set done WITHOUT triggering the rest timer
+	function maybeAutoComplete() {
+		if (set.completed) return;
+		let valid = false;
+		let changes: Partial<ExerciseSet> = {};
+
 		if (exerciseType === 'weightReps') {
-			onChange({ weight: parseFloat(weight) || undefined, reps: parseInt(reps) || undefined });
+			const w = parseFloat(weight);
+			const r = parseInt(reps);
+			if (w > 0 && r > 0) {
+				valid = true;
+				changes = { weight: w, reps: r, completed: true };
+			}
 		} else if (exerciseType === 'bodyweightReps') {
-			onChange({ reps: parseInt(reps) || undefined });
+			const r = parseInt(reps);
+			if (r > 0) { valid = true; changes = { reps: r, completed: true }; }
 		} else if (exerciseType === 'time') {
-			onChange({ durationSec: parseInt(durationSec) || undefined });
+			const d = parseInt(durationSec);
+			if (d > 0) { valid = true; changes = { durationSec: d, completed: true }; }
 		} else if (exerciseType === 'distance') {
-			onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined });
+			const dist = parseFloat(distanceKm);
+			if (dist > 0) { valid = true; changes = { distanceM: dist * 1000, completed: true }; }
 		}
-		onComplete();
+
+		if (valid) {
+			// onChange but NOT onComplete (no rest timer)
+			onChange(changes);
+		}
+	}
+
+	function handleComplete() {
+		// Manual tap: persist values + start rest timer
+		let changes: Partial<ExerciseSet> = { completed: true };
+		if (exerciseType === 'weightReps') {
+			const w = parseFloat(weight) || (placeholderWeight ?? undefined);
+			const r = parseInt(reps) || (placeholderReps ?? undefined);
+			changes = { weight: w, reps: r, completed: true };
+		} else if (exerciseType === 'bodyweightReps') {
+			changes = { reps: parseInt(reps) || (placeholderReps ?? undefined), completed: true };
+		} else if (exerciseType === 'time') {
+			changes = { durationSec: parseInt(durationSec) || (placeholderDurationSec ?? undefined), completed: true };
+		} else if (exerciseType === 'distance') {
+			const d = parseFloat(distanceKm) || (placeholderDistanceKm ?? undefined);
+			changes = { distanceM: d != null ? d * 1000 : undefined, completed: true };
+		}
+		onChange(changes);
+		onComplete(); // triggers rest timer
 	}
 </script>
 
@@ -54,18 +108,18 @@
 			<input
 				type="number"
 				inputmode="decimal"
-				placeholder="kg"
+				placeholder={placeholderWeight != null ? String(placeholderWeight) : 'kg'}
 				bind:value={weight}
-				onblur={() => onChange({ weight: parseFloat(weight) || undefined })}
+				onblur={() => { onChange({ weight: parseFloat(weight) || undefined }); maybeAutoComplete(); }}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder="reps"
+				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
-				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
+				onblur={() => { onChange({ reps: parseInt(reps) || undefined }); maybeAutoComplete(); }}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -73,9 +127,9 @@
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder="reps"
+				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
-				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
+				onblur={() => { onChange({ reps: parseInt(reps) || undefined }); maybeAutoComplete(); }}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -83,9 +137,9 @@
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder="sec"
+				placeholder={placeholderDurationSec != null ? String(placeholderDurationSec) : 'sec'}
 				bind:value={durationSec}
-				onblur={() => onChange({ durationSec: parseInt(durationSec) || undefined })}
+				onblur={() => { onChange({ durationSec: parseInt(durationSec) || undefined }); maybeAutoComplete(); }}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
@@ -93,9 +147,9 @@
 			<input
 				type="number"
 				inputmode="decimal"
-				placeholder="km"
+				placeholder={placeholderDistanceKm != null ? String(placeholderDistanceKm) : 'km'}
 				bind:value={distanceKm}
-				onblur={() => onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined })}
+				onblur={() => { onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined }); maybeAutoComplete(); }}
 				disabled={set.completed}
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>

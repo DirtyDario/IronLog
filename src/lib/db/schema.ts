@@ -96,6 +96,14 @@ export interface PersonalRecord {
 	_lastModified?: number;
 }
 
+export interface Tombstone {
+	id: string; // same as the deleted entity's id
+	entity: 'workout' | 'workoutExercise' | 'set';
+	entityId: string;
+	deletedAt: Date;
+	_synced: boolean;
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 export class IronLogDB extends Dexie {
@@ -106,6 +114,7 @@ export class IronLogDB extends Dexie {
 	routines!: EntityTable<Routine, 'id'>;
 	routineExercises!: EntityTable<RoutineExercise, 'id'>;
 	personalRecords!: EntityTable<PersonalRecord, 'id'>;
+	tombstones!: EntityTable<Tombstone, 'id'>;
 
 	constructor() {
 		super('IronLog');
@@ -133,7 +142,6 @@ export class IronLogDB extends Dexie {
 				personalRecords: 'id, exerciseId, date, _synced'
 			})
 			.upgrade((tx) => {
-				// Mark all existing rows as unsynced so they push on first login
 				const now = Date.now();
 				return Promise.all([
 					tx.table('exercises').toCollection().modify({ _synced: false, _lastModified: now }),
@@ -145,6 +153,18 @@ export class IronLogDB extends Dexie {
 					tx.table('personalRecords').toCollection().modify({ _synced: false, _lastModified: now })
 				]);
 			});
+
+		// v3 — add tombstones table for reliable cloud deletes
+		this.version(3).stores({
+			exercises: 'id, name, type, muscleGroup, isCustom, _synced',
+			workouts: 'id, date, finishedAt, _synced',
+			workoutExercises: 'id, workoutId, exerciseId, order, _synced',
+			sets: 'id, workoutExerciseId, order, _synced',
+			routines: 'id, name, createdAt, _synced',
+			routineExercises: 'id, routineId, exerciseId, order, _synced',
+			personalRecords: 'id, exerciseId, date, _synced',
+			tombstones: 'id, entity, entityId, _synced'
+		});
 	}
 }
 

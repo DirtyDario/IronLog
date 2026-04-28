@@ -50,11 +50,6 @@ export function schedulePush() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getUserId(): string | null {
-	// We call supabase.auth.getUser() async, but for sync we get it from session
-	return null; // populated during sync
-}
-
 // ─── Main sync ────────────────────────────────────────────────────────────────
 
 export async function syncNow(): Promise<void> {
@@ -77,6 +72,25 @@ export async function syncNow(): Promise<void> {
 // ─── Push ─────────────────────────────────────────────────────────────────────
 
 async function pushUnsynced(userId: string) {
+	// ── Tombstones first (deletes must land before any re-upsert of same id) ──
+	const unsyncedTombstones = await db.tombstones.where('_synced').equals(0).toArray();
+	if (unsyncedTombstones.length) {
+		// Order: sets → workout_exercises → workouts (FK-safe)
+		const order = { set: 0, workoutExercise: 1, workout: 2 };
+		const sorted = [...unsyncedTombstones].sort((a, b) => order[a.entity] - order[b.entity]);
+		for (const t of sorted) {
+			const tableMap: Record<string, string> = {
+				set: 'sets',
+				workoutExercise: 'workout_exercises',
+				workout: 'workouts'
+			};
+			const { error } = await supabase.from(tableMap[t.entity]).delete().eq('id', t.entityId).eq('user_id', userId);
+			if (error && error.code !== 'PGRST116') throw error; // ignore "not found"
+		}
+		// Delete tombstones locally after successful push
+		await db.tombstones.bulkDelete(sorted.map((t) => t.id));
+	}
+
 	// Bug 20 fix: use Dexie index instead of full table scan (booleans stored as 0/1)
 	// Exercises — only custom ones
 	const unsyncedExercises = await db.exercises
@@ -228,13 +242,17 @@ async function pullChanges(userId: string) {
 	const lastPull = getLastPull();
 	const now = new Date().toISOString();
 
+	// Collect tombstoned ids so we skip them during pull (prevents zombie re-downloads)
+	const tombstones = await db.tombstones.toArray();
+	const tombstonedIds = new Set(tombstones.map((t) => t.entityId));
+
 	// Helper: fetch rows updated since lastPull
 	async function fetchSince(table: string) {
 		let q = supabase.from(table).select('*').eq('user_id', userId);
 		if (lastPull) q = q.gt('updated_at', lastPull);
 		const { data, error } = await q;
 		if (error) throw error;
-		return data ?? [];
+		return (data ?? []).filter((r: any) => !tombstonedIds.has(r.id));
 	}
 
 	// Custom exercises

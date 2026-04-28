@@ -5,6 +5,7 @@
 	import { restTimer, formatTime } from '$lib/stores/restTimer';
 	import { db } from '$lib/db/schema';
 	import { checkAndSavePR } from '$lib/services/pr';
+	import { daysAgoLabel } from '$lib/services/lastWorkout';
 	import type { Exercise, ExerciseSet, WorkoutExercise } from '$lib/db/schema';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
 	import SetRow from '$lib/components/SetRow.svelte';
@@ -86,14 +87,78 @@
 		const workoutId = $activeWorkout.workout?.id;
 		if (!workoutId) return;
 		await activeWorkout.finish();
-		// Bug 12 fix: navigate directly — no $effect-based redirect will fire because
-		// goto() is called synchronously here before the effect re-runs
 		goto(`/workout/summary/${workoutId}`);
 	}
 
 	async function handleDiscard() {
+		showDiscardConfirm = false;
 		await activeWorkout.discard();
 		goto('/');
+	}
+
+	// ── Placeholder cascade ────────────────────────────────────────────────────
+	// For each set at index i in a given workoutExercise:
+	//   1. Look backward through sets 0..i-1 for the most recent one with a typed value
+	//   2. Fall back to previousSets (last finished workout at same index)
+	function getPlaceholders(weId: string, setIndex: number) {
+		const sets = $activeWorkout.sets[weId] ?? [];
+		const prev = $activeWorkout.previousSets[weId];
+
+		// Walk backward through current workout sets for a typed weight / reps
+		let weight: number | undefined;
+		let reps: number | undefined;
+		let durationSec: number | undefined;
+		let distanceKm: number | undefined;
+
+		for (let j = setIndex - 1; j >= 0; j--) {
+			const s = sets[j];
+			if (weight == null && s.weight != null) weight = s.weight;
+			if (reps == null && s.reps != null) reps = s.reps;
+			if (durationSec == null && s.durationSec != null) durationSec = s.durationSec;
+			if (distanceKm == null && s.distanceM != null) distanceKm = s.distanceM / 1000;
+			if (weight != null && reps != null) break;
+		}
+
+		// Fallback to last-workout same-index set
+		if (prev?.sets[setIndex]) {
+			const ps = prev.sets[setIndex];
+			if (weight == null && ps.weight != null) weight = ps.weight;
+			if (reps == null && ps.reps != null) reps = ps.reps;
+			if (durationSec == null && ps.durationSec != null) durationSec = ps.durationSec;
+			if (distanceKm == null && ps.distanceM != null) distanceKm = ps.distanceM / 1000;
+		}
+
+		return { weight, reps, durationSec, distanceKm };
+	}
+
+	// ── Last workout summary text ─────────────────────────────────────────────
+	function lastWorkoutSummary(weId: string, exerciseType: string): string | null {
+		const info = $activeWorkout.previousSets[weId];
+		if (!info || !info.sets.length) return null;
+		const sets = info.sets;
+		const label = daysAgoLabel(info.date);
+
+		if (exerciseType === 'weightReps') {
+			// Group consecutive sets with same weight×reps as "NxM @ Wkg"
+			// Simple: show "Nx sets @ W kg × R reps" or just summarise
+			const total = sets.length;
+			const first = sets[0];
+			if (sets.every((s) => s.weight === first.weight && s.reps === first.reps)) {
+				return `Last time: ${total}×${first.reps ?? '?'} @ ${first.weight ?? '?'} kg · ${label}`;
+			}
+			return `Last time: ${total} sets · ${label}`;
+		} else if (exerciseType === 'bodyweightReps') {
+			const total = sets.length;
+			const first = sets[0];
+			return `Last time: ${total}×${first.reps ?? '?'} reps · ${label}`;
+		} else if (exerciseType === 'time') {
+			const totalSec = sets.reduce((a, s) => a + (s.durationSec ?? 0), 0);
+			return `Last time: ${totalSec}s total · ${label}`;
+		} else if (exerciseType === 'distance') {
+			const totalM = sets.reduce((a, s) => a + (s.distanceM ?? 0), 0);
+			return `Last time: ${(totalM / 1000).toFixed(1)} km · ${label}`;
+		}
+		return null;
 	}
 </script>
 
@@ -109,6 +174,19 @@
 			<p class="text-sm font-medium opacity-90">{$activeWorkout.prAlerts.join(', ')}</p>
 		</div>
 	</button>
+{/if}
+
+<!-- Undo discard snackbar -->
+{#if $activeWorkout.lastDiscarded}
+	<div class="fixed bottom-24 left-4 right-4 z-50 flex items-center justify-between rounded-2xl bg-zinc-800 px-4 py-3 shadow-xl">
+		<p class="text-sm font-medium text-zinc-200">Workout discarded</p>
+		<button
+			onclick={async () => { await activeWorkout.restoreDiscarded(); goto('/workout/active'); }}
+			class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-bold text-white active:bg-orange-600"
+		>
+			Undo
+		</button>
+	</div>
 {/if}
 
 <div class="flex flex-col gap-4 p-4 pt-4 pb-40">
@@ -149,9 +227,10 @@
 		{#each exercises as we (we.id)}
 			{@const exercise = exerciseMap[we.exerciseId]}
 			{@const sets = $activeWorkout.sets[we.id] ?? []}
+			{@const summary = lastWorkoutSummary(we.id, exercise?.type ?? 'weightReps')}
 			<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
 				<div class="mb-3 flex items-center gap-2">
-					<!-- Drag handle — bigger tap area, same icon size -->
+					<!-- Drag handle -->
 					<div
 						use:dragHandle
 						role="button"
@@ -165,7 +244,9 @@
 					</div>
 					<div class="flex-1">
 						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}</h2>
-						{#if exercise?.muscleGroup}
+						{#if summary}
+							<p class="text-xs text-zinc-500">{summary}</p>
+						{:else if exercise?.muscleGroup}
 							<span class="text-xs text-zinc-500 capitalize">{exercise.muscleGroup}</span>
 						{/if}
 					</div>
@@ -196,10 +277,15 @@
 				</div>
 
 				{#each sets as set, i (set.id)}
+					{@const ph = getPlaceholders(we.id, i)}
 					<SetRow
 						{set}
 						index={i}
 						exerciseType={exercise?.type ?? 'weightReps'}
+						placeholderWeight={ph.weight}
+						placeholderReps={ph.reps}
+						placeholderDurationSec={ph.durationSec}
+						placeholderDistanceKm={ph.distanceKm}
 						onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}
 						onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
 						onDelete={() => activeWorkout.deleteSet(set.id, we.id)}

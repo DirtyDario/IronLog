@@ -2,6 +2,8 @@ import { writable, get } from 'svelte/store';
 import { db } from '$lib/db/schema';
 import type { Workout, WorkoutExercise, ExerciseSet } from '$lib/db/schema';
 import { schedulePush } from '$lib/services/sync';
+import { getLastFinishedSetsFor, type LastWorkoutInfo } from '$lib/services/lastWorkout';
+import { restTimer } from '$lib/stores/restTimer';
 
 interface ActiveWorkoutState {
 	workout: Workout | null;
@@ -9,10 +11,28 @@ interface ActiveWorkoutState {
 	sets: Record<string, ExerciseSet[]>; // keyed by workoutExerciseId
 	startedAt: Date | null;
 	prAlerts: string[]; // exercise names that got a new PR this session
+	previousSets: Record<string, LastWorkoutInfo | null>; // keyed by workoutExerciseId
+	lastDiscarded: {
+		workout: Workout;
+		workoutExercises: WorkoutExercise[];
+		sets: Record<string, ExerciseSet[]>;
+		previousSets: Record<string, LastWorkoutInfo | null>;
+		startedAt: Date | null;
+	} | null;
 }
 
 function syncMeta() {
-	return { _synced: false, _lastModified: Date.now() };
+	return { _synced: false as const, _lastModified: Date.now() };
+}
+
+async function writeTombstone(entity: 'workout' | 'workoutExercise' | 'set', entityId: string) {
+	await db.tombstones.put({
+		id: entityId,
+		entity,
+		entityId,
+		deletedAt: new Date(),
+		_synced: false
+	});
 }
 
 function createActiveWorkoutStore() {
@@ -21,13 +41,17 @@ function createActiveWorkoutStore() {
 		workoutExercises: [],
 		sets: {},
 		startedAt: null,
-		prAlerts: []
+		prAlerts: [],
+		previousSets: {},
+		lastDiscarded: null
 	});
 
 	return {
 		subscribe,
 
 		async start(name?: string) {
+			// Reset rest timer defensively
+			restTimer.stop();
 			const workout: Workout = {
 				id: crypto.randomUUID(),
 				date: new Date(),
@@ -41,7 +65,9 @@ function createActiveWorkoutStore() {
 				workoutExercises: [],
 				sets: {},
 				startedAt: new Date(),
-				prAlerts: []
+				prAlerts: [],
+				previousSets: {},
+				lastDiscarded: null
 			});
 			return workout;
 		},
@@ -58,10 +84,15 @@ function createActiveWorkoutStore() {
 			};
 			await db.workoutExercises.add(we);
 			schedulePush();
+
+			// Fetch last workout's sets for this exercise (for placeholder + header)
+			const lastInfo = await getLastFinishedSetsFor(exerciseId);
+
 			update((s) => ({
 				...s,
 				workoutExercises: [...s.workoutExercises, we],
-				sets: { ...s.sets, [we.id]: [] }
+				sets: { ...s.sets, [we.id]: [] },
+				previousSets: { ...s.previousSets, [we.id]: lastInfo }
 			}));
 			return we;
 		},
@@ -69,15 +100,15 @@ function createActiveWorkoutStore() {
 		async addSet(workoutExerciseId: string) {
 			const state = get({ subscribe });
 			const existing = state.sets[workoutExerciseId] ?? [];
-			const last = existing[existing.length - 1];
+			// Do NOT pre-populate weight/reps — show as placeholder only
 			const newSet: ExerciseSet = {
 				id: crypto.randomUUID(),
 				workoutExerciseId,
 				order: existing.length,
-				weight: last?.weight,
-				reps: last?.reps,
-				durationSec: last?.durationSec,
-				distanceM: last?.distanceM,
+				weight: undefined,
+				reps: undefined,
+				durationSec: undefined,
+				distanceM: undefined,
 				isWarmup: false,
 				completed: false,
 				...syncMeta()
@@ -121,6 +152,24 @@ function createActiveWorkoutStore() {
 			}));
 		},
 
+		async deleteExercise(workoutExerciseId: string) {
+			await db.sets.where('workoutExerciseId').equals(workoutExerciseId).delete();
+			await db.workoutExercises.delete(workoutExerciseId);
+			schedulePush();
+			update((s) => {
+				const sets = { ...s.sets };
+				const previousSets = { ...s.previousSets };
+				delete sets[workoutExerciseId];
+				delete previousSets[workoutExerciseId];
+				return {
+					...s,
+					workoutExercises: s.workoutExercises.filter((we) => we.id !== workoutExerciseId),
+					sets,
+					previousSets
+				};
+			});
+		},
+
 		addPrAlert(exerciseName: string) {
 			update((s) => ({ ...s, prAlerts: [...s.prAlerts, exerciseName] }));
 		},
@@ -132,29 +181,47 @@ function createActiveWorkoutStore() {
 		async finish() {
 			const state = get({ subscribe });
 			if (!state.workout || !state.startedAt) return;
+
+			// Auto-complete sets that have valid values but aren't marked complete
+			// We need exercise types to know what "valid" means per exercise
+			const exerciseIds = state.workoutExercises.map((we) => we.exerciseId);
+			const exercises = await db.exercises.bulkGet(exerciseIds);
+			const typeMap: Record<string, string> = {};
+			state.workoutExercises.forEach((we, i) => {
+				typeMap[we.id] = exercises[i]?.type ?? 'weightReps';
+			});
+
+			const autoCompleteOps: Promise<void>[] = [];
+			for (const we of state.workoutExercises) {
+				const exType = typeMap[we.id];
+				const sets = state.sets[we.id] ?? [];
+				for (const s of sets) {
+					if (s.completed) continue;
+					let valid = false;
+					if (exType === 'weightReps') valid = s.weight != null && s.reps != null;
+					else if (exType === 'bodyweightReps') valid = s.reps != null;
+					else if (exType === 'time') valid = s.durationSec != null;
+					else if (exType === 'distance') valid = s.distanceM != null;
+					if (valid) {
+						autoCompleteOps.push(
+							db.sets.update(s.id, { completed: true, ...syncMeta() }).then(() => {})
+						);
+					}
+				}
+			}
+			await Promise.all(autoCompleteOps);
+
 			const durationSec = Math.round((Date.now() - state.startedAt.getTime()) / 1000);
 			await db.workouts.update(state.workout.id, { finishedAt: new Date(), durationSec, ...syncMeta() });
 			schedulePush();
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [] });
-		},
 
-		async deleteExercise(workoutExerciseId: string) {
-			await db.sets.where('workoutExerciseId').equals(workoutExerciseId).delete();
-			await db.workoutExercises.delete(workoutExerciseId);
-			schedulePush();
-			update((s) => {
-				const sets = { ...s.sets };
-				delete sets[workoutExerciseId];
-				return {
-					...s,
-					workoutExercises: s.workoutExercises.filter((we) => we.id !== workoutExerciseId),
-					sets
-				};
-			});
+			// Reset rest timer
+			restTimer.stop();
+
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [], previousSets: {}, lastDiscarded: null });
 		},
 
 		async reorderExercises(newList: WorkoutExercise[]) {
-			// Update order values and persist
 			const updated = newList.map((we, i) => ({ ...we, order: i }));
 			await Promise.all(
 				updated.map((we) =>
@@ -168,13 +235,75 @@ function createActiveWorkoutStore() {
 		async discard() {
 			const state = get({ subscribe });
 			if (!state.workout) return;
-			// Delete all sets and workout exercises, then the workout
-			for (const weId of Object.keys(state.sets)) {
+
+			// Snapshot for undo BEFORE clearing state
+			const snapshot = {
+				workout: state.workout,
+				workoutExercises: [...state.workoutExercises],
+				sets: { ...state.sets },
+				previousSets: { ...state.previousSets },
+				startedAt: state.startedAt
+			};
+
+			// Clear UI immediately (feels instant)
+			restTimer.stop();
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [], previousSets: {}, lastDiscarded: snapshot });
+
+			// Write tombstones + delete from Dexie
+			const weIds = snapshot.workoutExercises.map((we) => we.id);
+			const setIds = Object.values(snapshot.sets).flat().map((s) => s.id);
+
+			// Tombstones (FK order: sets → workoutExercises → workouts)
+			await Promise.all(setIds.map((id) => writeTombstone('set', id)));
+			await Promise.all(weIds.map((id) => writeTombstone('workoutExercise', id)));
+			await writeTombstone('workout', snapshot.workout.id);
+
+			// Hard-delete from Dexie
+			for (const weId of weIds) {
 				await db.sets.where('workoutExerciseId').equals(weId).delete();
 			}
-			await db.workoutExercises.where('workoutId').equals(state.workout.id).delete();
-			await db.workouts.delete(state.workout.id);
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [] });
+			await db.workoutExercises.where('workoutId').equals(snapshot.workout.id).delete();
+			await db.workouts.delete(snapshot.workout.id);
+
+			schedulePush();
+
+			// Auto-clear undo after 5 seconds
+			setTimeout(() => {
+				update((s) => {
+					if (s.lastDiscarded?.workout.id === snapshot.workout.id) {
+						return { ...s, lastDiscarded: null };
+					}
+					return s;
+				});
+			}, 5000);
+		},
+
+		async restoreDiscarded() {
+			const state = get({ subscribe });
+			const snap = state.lastDiscarded;
+			if (!snap) return;
+
+			// Remove tombstones for this workout
+			const weIds = snap.workoutExercises.map((we) => we.id);
+			const setIds = Object.values(snap.sets).flat().map((s) => s.id);
+			await db.tombstones.bulkDelete([snap.workout.id, ...weIds, ...setIds]);
+
+			// Re-insert everything
+			await db.workouts.put(snap.workout);
+			await db.workoutExercises.bulkPut(snap.workoutExercises);
+			await db.sets.bulkPut(Object.values(snap.sets).flat());
+			schedulePush();
+
+			// Restore state
+			set({
+				workout: snap.workout,
+				workoutExercises: snap.workoutExercises,
+				sets: snap.sets,
+				startedAt: snap.startedAt,
+				prAlerts: [],
+				previousSets: snap.previousSets,
+				lastDiscarded: null
+			});
 		}
 	};
 }
