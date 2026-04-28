@@ -4,10 +4,25 @@
 	import { restTimer, formatTime } from '$lib/stores/restTimer';
 	import { db } from '$lib/db/schema';
 	import { checkAndSavePR } from '$lib/services/pr';
-	import type { Exercise, ExerciseSet } from '$lib/db/schema';
+	import type { Exercise, ExerciseSet, WorkoutExercise } from '$lib/db/schema';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
 	import SetRow from '$lib/components/SetRow.svelte';
 	import RestTimerBar from '$lib/components/RestTimerBar.svelte';
+	import { dndzone, type DndEvent } from 'svelte-dnd-action';
+	import { flip } from 'svelte/animate';
+
+	const FLIP_MS = 250;
+
+	let dragDisabled = $state(true);
+
+	function startDrag(e: PointerEvent) {
+		e.preventDefault();
+		dragDisabled = false;
+	}
+
+	function stopDrag() {
+		dragDisabled = true;
+	}
 
 	let showPicker = $state(false);
 	let showFinishConfirm = $state(false);
@@ -107,16 +122,35 @@
 	{/if}
 
 	<!-- Exercises -->
+	<div
+		use:dndzone={{ items: $activeWorkout.workoutExercises, flipDurationMs: FLIP_MS, dropTargetStyle: {}, dragDisabled }}
+		onconsider={(e: CustomEvent<DndEvent<WorkoutExercise>>) => { activeWorkout.reorderExercises(e.detail.items); }}
+		onfinalize={(e: CustomEvent<DndEvent<WorkoutExercise>>) => { activeWorkout.reorderExercises(e.detail.items); dragDisabled = true; }}
+		class="flex flex-col gap-4"
+	>
 	{#each $activeWorkout.workoutExercises as we (we.id)}
 		{@const exercise = exerciseMap[we.exerciseId]}
 		{@const sets = $activeWorkout.sets[we.id] ?? []}
-		<div class="rounded-2xl bg-zinc-900 p-4">
-			<div class="mb-3 flex items-center justify-between">
-				<div>
-					<h2 class="font-semibold text-base">{exercise?.name ?? '...'}</h2>
-					{#if exercise?.muscleGroup}
-						<span class="text-xs text-zinc-500 capitalize">{exercise.muscleGroup}</span>
-					{/if}
+		<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
+			<div class="mb-3 flex items-center gap-3">
+				<!-- Drag handle -->
+				<div
+					role="button"
+					tabindex="0"
+					class="drag-handle cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 px-1 text-lg leading-none flex-shrink-0"
+					aria-label="Drag to reorder"
+					onpointerdown={startDrag}
+					onpointerup={stopDrag}
+				>
+					⠿
+				</div>
+				<div class="flex-1 flex items-center justify-between">
+					<div>
+						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}</h2>
+						{#if exercise?.muscleGroup}
+							<span class="text-xs text-zinc-500 capitalize">{exercise.muscleGroup}</span>
+						{/if}
+					</div>
 				</div>
 			</div>
 
@@ -154,6 +188,7 @@
 			</button>
 		</div>
 	{/each}
+	</div>
 
 	<button
 		onclick={() => (showPicker = true)}

@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { activeWorkout } from '$lib/stores/activeWorkout';
+	import { schedulePush } from '$lib/services/sync';
 
 	let routines: Routine[] = $state([]);
 	let showCreate = $state(false);
@@ -18,9 +19,12 @@
 		const routine: Routine = {
 			id: crypto.randomUUID(),
 			name: newRoutineName.trim(),
-			createdAt: new Date()
+			createdAt: new Date(),
+			_synced: false,
+			_lastModified: Date.now()
 		};
 		await db.routines.add(routine);
+		schedulePush();
 		routines = [routine, ...routines];
 		newRoutineName = '';
 		showCreate = false;

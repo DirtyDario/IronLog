@@ -24,8 +24,10 @@
 		"vite-plugin-pwa": "^1.2.0"
 	},
 	"dependencies": {
+		"@supabase/supabase-js": "^2.105.0",
 		"chart.js": "^4.5.1",
 		"dexie": "^4.4.2",
-		"svelte-chartjs": "^4.0.1"
+		"svelte-chartjs": "^4.0.1",
+		"svelte-dnd-action": "^0.9.69"
 	}
 }

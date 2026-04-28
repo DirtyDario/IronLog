@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { db } from '$lib/db/schema';
 import type { Workout, WorkoutExercise, ExerciseSet } from '$lib/db/schema';
+import { schedulePush } from '$lib/services/sync';
 
 interface ActiveWorkoutState {
 	workout: Workout | null;
@@ -8,6 +9,10 @@ interface ActiveWorkoutState {
 	sets: Record<string, ExerciseSet[]>; // keyed by workoutExerciseId
 	startedAt: Date | null;
 	prAlerts: string[]; // exercise names that got a new PR this session
+}
+
+function syncMeta() {
+	return { _synced: false, _lastModified: Date.now() };
 }
 
 function createActiveWorkoutStore() {
@@ -26,9 +31,11 @@ function createActiveWorkoutStore() {
 			const workout: Workout = {
 				id: crypto.randomUUID(),
 				date: new Date(),
-				name
+				name,
+				...syncMeta()
 			};
 			await db.workouts.add(workout);
+			schedulePush();
 			set({
 				workout,
 				workoutExercises: [],
@@ -46,9 +53,11 @@ function createActiveWorkoutStore() {
 				id: crypto.randomUUID(),
 				workoutId: state.workout.id,
 				exerciseId,
-				order: state.workoutExercises.length
+				order: state.workoutExercises.length,
+				...syncMeta()
 			};
 			await db.workoutExercises.add(we);
+			schedulePush();
 			update((s) => ({
 				...s,
 				workoutExercises: [...s.workoutExercises, we],
@@ -70,9 +79,11 @@ function createActiveWorkoutStore() {
 				durationSec: last?.durationSec,
 				distanceM: last?.distanceM,
 				isWarmup: false,
-				completed: false
+				completed: false,
+				...syncMeta()
 			};
 			await db.sets.add(newSet);
+			schedulePush();
 			update((s) => ({
 				...s,
 				sets: {
@@ -84,13 +95,15 @@ function createActiveWorkoutStore() {
 		},
 
 		async updateSet(setId: string, workoutExerciseId: string, changes: Partial<ExerciseSet>) {
-			await db.sets.update(setId, changes);
+			const meta = syncMeta();
+			await db.sets.update(setId, { ...changes, ...meta });
+			schedulePush();
 			update((s) => ({
 				...s,
 				sets: {
 					...s.sets,
 					[workoutExerciseId]: s.sets[workoutExerciseId].map((st) =>
-						st.id === setId ? { ...st, ...changes } : st
+						st.id === setId ? { ...st, ...changes, ...meta } : st
 					)
 				}
 			}));
@@ -98,6 +111,7 @@ function createActiveWorkoutStore() {
 
 		async deleteSet(setId: string, workoutExerciseId: string) {
 			await db.sets.delete(setId);
+			schedulePush();
 			update((s) => ({
 				...s,
 				sets: {
@@ -119,8 +133,21 @@ function createActiveWorkoutStore() {
 			const state = get({ subscribe });
 			if (!state.workout || !state.startedAt) return;
 			const durationSec = Math.round((Date.now() - state.startedAt.getTime()) / 1000);
-			await db.workouts.update(state.workout.id, { finishedAt: new Date(), durationSec });
+			await db.workouts.update(state.workout.id, { finishedAt: new Date(), durationSec, ...syncMeta() });
+			schedulePush();
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [] });
+		},
+
+		async reorderExercises(newList: WorkoutExercise[]) {
+			// Update order values and persist
+			const updated = newList.map((we, i) => ({ ...we, order: i }));
+			await Promise.all(
+				updated.map((we) =>
+					db.workoutExercises.update(we.id, { order: we.order, _synced: false, _lastModified: Date.now() })
+				)
+			);
+			schedulePush();
+			update((s) => ({ ...s, workoutExercises: updated }));
 		},
 
 		async discard() {

@@ -4,10 +4,16 @@
 	import type { Routine, RoutineExercise, Exercise } from '$lib/db/schema';
 	import { onMount } from 'svelte';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
+	import { schedulePush } from '$lib/services/sync';
+	import { dndzone, type DndEvent } from 'svelte-dnd-action';
+	import { flip } from 'svelte/animate';
+
+	const FLIP_MS = 250;
 
 	let routine: Routine | null = $state(null);
 	let items: Array<{ re: RoutineExercise; exercise: Exercise }> = $state([]);
 	let showPicker = $state(false);
+	let dragDisabled = $state(true);
 
 	onMount(async () => {
 		const id = $page.params.id;
@@ -34,9 +40,12 @@
 			exerciseId,
 			order: items.length,
 			targetSets: 3,
-			targetReps: 10
+			targetReps: 10,
+			_synced: false,
+			_lastModified: Date.now()
 		};
 		await db.routineExercises.add(re);
+		schedulePush();
 		await loadItems();
 		showPicker = false;
 	}
@@ -47,7 +56,27 @@
 	}
 
 	async function updateTargets(reId: string, targetSets: number, targetReps: number) {
-		await db.routineExercises.update(reId, { targetSets, targetReps });
+		await db.routineExercises.update(reId, { targetSets, targetReps, _synced: false, _lastModified: Date.now() });
+		schedulePush();
+	}
+
+	async function handleReorder(newItems: Array<{ re: RoutineExercise; exercise: Exercise }>) {
+		// Update order in Dexie
+		await Promise.all(
+			newItems.map((item, i) =>
+				db.routineExercises.update(item.re.id, { order: i, _synced: false, _lastModified: Date.now() })
+			)
+		);
+		schedulePush();
+	}
+
+	function startDrag(e: PointerEvent) {
+		e.preventDefault();
+		dragDisabled = false;
+	}
+
+	function stopDrag() {
+		dragDisabled = true;
 	}
 </script>
 
@@ -68,20 +97,38 @@
 			<p>No exercises yet — tap "+ Exercise" to add</p>
 		</div>
 	{:else}
-		<div class="flex flex-col gap-3">
-			{#each items as { re, exercise }}
-				<div class="rounded-2xl bg-zinc-900 p-4">
-					<div class="flex items-center justify-between mb-3">
-						<div>
-							<p class="font-semibold">{exercise.name}</p>
-							<p class="text-xs text-zinc-500 capitalize">{exercise.muscleGroup}</p>
-						</div>
-						<button
-							onclick={() => removeExercise(re.id)}
-							class="text-xs text-red-500 font-medium px-2 py-1 rounded active:bg-zinc-800"
+		<div
+			use:dndzone={{ items, flipDurationMs: FLIP_MS, dropTargetStyle: {}, dragDisabled }}
+			onconsider={(e: CustomEvent<DndEvent<typeof items[0]>>) => { items = e.detail.items; }}
+			onfinalize={(e: CustomEvent<DndEvent<typeof items[0]>>) => { items = e.detail.items; dragDisabled = true; handleReorder(items); }}
+			class="flex flex-col gap-3"
+		>
+			{#each items as item (item.re.id)}
+				<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
+					<div class="flex items-center gap-3 mb-3">
+						<!-- Drag handle -->
+						<div
+							role="button"
+							tabindex="0"
+							class="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 px-1 text-lg leading-none flex-shrink-0"
+							aria-label="Drag to reorder"
+							onpointerdown={startDrag}
+							onpointerup={stopDrag}
 						>
-							Remove
-						</button>
+							⠿
+						</div>
+						<div class="flex-1 flex items-center justify-between">
+							<div>
+								<p class="font-semibold">{item.exercise.name}</p>
+								<p class="text-xs text-zinc-500 capitalize">{item.exercise.muscleGroup}</p>
+							</div>
+							<button
+								onclick={() => removeExercise(item.re.id)}
+								class="text-xs text-red-500 font-medium px-2 py-1 rounded active:bg-zinc-800"
+							>
+								Remove
+							</button>
+						</div>
 					</div>
 					<div class="grid grid-cols-2 gap-3">
 						<div>
@@ -89,8 +136,8 @@
 							<input
 								type="number"
 								inputmode="numeric"
-								value={re.targetSets ?? 3}
-								onchange={(e) => updateTargets(re.id, parseInt((e.target as HTMLInputElement).value), re.targetReps ?? 10)}
+								value={item.re.targetSets ?? 3}
+								onchange={(e) => updateTargets(item.re.id, parseInt((e.target as HTMLInputElement).value), item.re.targetReps ?? 10)}
 								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
 							/>
 						</div>
@@ -99,8 +146,8 @@
 							<input
 								type="number"
 								inputmode="numeric"
-								value={re.targetReps ?? 10}
-								onchange={(e) => updateTargets(re.id, re.targetSets ?? 3, parseInt((e.target as HTMLInputElement).value))}
+								value={item.re.targetReps ?? 10}
+								onchange={(e) => updateTargets(item.re.id, item.re.targetSets ?? 3, parseInt((e.target as HTMLInputElement).value))}
 								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
 							/>
 						</div>

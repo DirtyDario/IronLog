@@ -2,6 +2,7 @@
 	import { db } from '$lib/db/schema';
 	import type { Exercise, MuscleGroup } from '$lib/db/schema';
 	import { onMount } from 'svelte';
+	import { schedulePush } from '$lib/services/sync';
 
 	let exercises: Exercise[] = $state([]);
 	let search = $state('');
@@ -32,9 +33,12 @@
 			name: newName.trim(),
 			type: newType,
 			muscleGroup: newMuscle,
-			isCustom: true
+			isCustom: true,
+			_synced: false,
+			_lastModified: Date.now()
 		};
 		await db.exercises.add(ex);
+		schedulePush();
 		exercises = [...exercises, ex].sort((a, b) => a.name.localeCompare(b.name));
 		newName = '';
 		showAdd = false;

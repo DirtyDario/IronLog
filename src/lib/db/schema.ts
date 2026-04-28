@@ -24,6 +24,8 @@ export interface Exercise {
 	muscleGroup: MuscleGroup;
 	isCustom: boolean;
 	notes?: string;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface Workout {
@@ -33,6 +35,8 @@ export interface Workout {
 	notes?: string;
 	durationSec?: number;
 	finishedAt?: Date;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface WorkoutExercise {
@@ -41,6 +45,8 @@ export interface WorkoutExercise {
 	exerciseId: string;
 	order: number;
 	notes?: string;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface ExerciseSet {
@@ -54,12 +60,16 @@ export interface ExerciseSet {
 	isWarmup: boolean;
 	completed: boolean;
 	notes?: string;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface Routine {
 	id: string;
 	name: string;
 	createdAt: Date;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface RoutineExercise {
@@ -69,6 +79,8 @@ export interface RoutineExercise {
 	order: number;
 	targetSets?: number;
 	targetReps?: number;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 export interface PersonalRecord {
@@ -80,6 +92,8 @@ export interface PersonalRecord {
 	estimatedOneRM?: number; // Epley formula
 	durationSec?: number;
 	distanceM?: number;
+	_synced?: boolean;
+	_lastModified?: number;
 }
 
 // ─── Database ─────────────────────────────────────────────────────────────────
@@ -95,6 +109,8 @@ export class IronLogDB extends Dexie {
 
 	constructor() {
 		super('IronLog');
+
+		// v1 — original schema
 		this.version(1).stores({
 			exercises: 'id, name, type, muscleGroup, isCustom',
 			workouts: 'id, date, finishedAt',
@@ -104,6 +120,31 @@ export class IronLogDB extends Dexie {
 			routineExercises: 'id, routineId, exerciseId, order',
 			personalRecords: 'id, exerciseId, date'
 		});
+
+		// v2 — add _synced and _lastModified for cloud sync
+		this.version(2)
+			.stores({
+				exercises: 'id, name, type, muscleGroup, isCustom, _synced',
+				workouts: 'id, date, finishedAt, _synced',
+				workoutExercises: 'id, workoutId, exerciseId, order, _synced',
+				sets: 'id, workoutExerciseId, order, _synced',
+				routines: 'id, name, createdAt, _synced',
+				routineExercises: 'id, routineId, exerciseId, order, _synced',
+				personalRecords: 'id, exerciseId, date, _synced'
+			})
+			.upgrade((tx) => {
+				// Mark all existing rows as unsynced so they push on first login
+				const now = Date.now();
+				return Promise.all([
+					tx.table('exercises').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('workouts').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('workoutExercises').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('sets').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('routines').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('routineExercises').toCollection().modify({ _synced: false, _lastModified: now }),
+					tx.table('personalRecords').toCollection().modify({ _synced: false, _lastModified: now })
+				]);
+			});
 	}
 }
 

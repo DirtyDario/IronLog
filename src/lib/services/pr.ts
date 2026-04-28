@@ -1,5 +1,10 @@
 import { db } from '$lib/db/schema';
 import type { ExerciseSet } from '$lib/db/schema';
+import { schedulePush } from '$lib/services/sync';
+
+function syncMeta() {
+	return { _synced: false, _lastModified: Date.now() };
+}
 
 /** Epley formula: estimated 1RM = weight * (1 + reps/30) */
 export function epley(weight: number, reps: number): number {
@@ -31,8 +36,10 @@ export async function checkAndSavePR(
 				date,
 				weight: set.weight,
 				reps: set.reps,
-				estimatedOneRM: newOneRM
+				estimatedOneRM: newOneRM,
+				...syncMeta()
 			});
+			schedulePush();
 			isNewPR = true;
 		}
 	} else if (set.durationSec) {
@@ -42,8 +49,10 @@ export async function checkAndSavePR(
 				id: crypto.randomUUID(),
 				exerciseId,
 				date,
-				durationSec: set.durationSec
+				durationSec: set.durationSec,
+				...syncMeta()
 			});
+			schedulePush();
 			isNewPR = true;
 		}
 	} else if (set.distanceM) {
@@ -53,8 +62,10 @@ export async function checkAndSavePR(
 				id: crypto.randomUUID(),
 				exerciseId,
 				date,
-				distanceM: set.distanceM
+				distanceM: set.distanceM,
+				...syncMeta()
 			});
+			schedulePush();
 			isNewPR = true;
 		}
 	}
