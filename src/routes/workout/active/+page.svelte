@@ -99,29 +99,33 @@
 	}
 
 	// ── Placeholder cascade ────────────────────────────────────────────────────
-	// Weight cascades from previous sets / last workout. Reps intentionally blank.
+	// Weight cascades from previous sets in current workout → fallback last workout.
+	// Reps come only from last finished workout at same index (never cascade within workout).
 	function getPlaceholders(weId: string, setIndex: number) {
 		const sets = $activeWorkout.sets[weId] ?? [];
 		const prev = $activeWorkout.previousSets[weId];
 
 		let weight: number | undefined;
+		let reps: number | undefined;
 		let durationSec: number | undefined;
 		let distanceKm: number | undefined;
 
+		// Weight: walk backward through current workout sets
 		for (let j = setIndex - 1; j >= 0; j--) {
 			const s = sets[j];
 			if (weight == null && s.weight != null) { weight = s.weight; break; }
 		}
 
-		// Fallback to last-workout same-index set
+		// All fields: fallback to last-workout same-index set
 		if (prev?.sets[setIndex]) {
 			const ps = prev.sets[setIndex];
 			if (weight == null && ps.weight != null) weight = ps.weight;
+			if (reps == null && ps.reps != null) reps = ps.reps;
 			if (durationSec == null && ps.durationSec != null) durationSec = ps.durationSec;
 			if (distanceKm == null && ps.distanceM != null) distanceKm = ps.distanceM / 1000;
 		}
 
-		return { weight, durationSec, distanceKm };
+		return { weight, reps, durationSec, distanceKm };
 	}
 
 	// ── Last workout summary text ─────────────────────────────────────────────
@@ -202,10 +206,13 @@
 			{:else}
 				<button
 					onclick={() => { nameInput = $activeWorkout.workout?.name ?? ''; editingName = true; }}
-					class="text-left w-full"
+					class="text-left w-full flex items-center gap-2"
 					aria-label="Edit workout name"
 				>
-					<h1 class="text-2xl font-bold truncate">{$activeWorkout.workout?.name ?? 'Workout'} <span class="text-base text-zinc-600">✎</span></h1>
+					<h1 class="text-2xl font-bold truncate">{$activeWorkout.workout?.name ?? 'Workout'}</h1>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-zinc-500 shrink-0">
+						<path d="M2.695 14.763l-1.262 3.154a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.885L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.42a4 4 0 0 0-.885 1.343z" />
+					</svg>
 				</button>
 			{/if}
 			<p class="text-sm text-zinc-400">{formatTime(elapsedSec)}</p>
@@ -251,8 +258,8 @@
 						tabindex="0"
 						aria-label="Drag to reorder"
 						class="cursor-grab active:cursor-grabbing touch-none select-none
-						       text-zinc-500 text-xl leading-none flex-shrink-0
-						       flex items-center justify-center w-10 h-10 -ml-1 rounded-lg"
+						       text-zinc-600 leading-none flex-shrink-0
+						       flex items-center justify-center w-6 h-6 rounded"
 					>
 						⠿
 					</div>
@@ -297,6 +304,7 @@
 						index={i}
 						exerciseType={exercise?.type ?? 'weightReps'}
 						placeholderWeight={ph.weight}
+						placeholderReps={ph.reps}
 						placeholderDurationSec={ph.durationSec}
 						placeholderDistanceKm={ph.distanceKm}
 						onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}

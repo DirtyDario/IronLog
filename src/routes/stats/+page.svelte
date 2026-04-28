@@ -73,14 +73,20 @@
 		bests = allBests;
 
 		// Build exercise list for Progress tab:
-		// Only show exercises that appear in at least one finished workout.
-		// Sort by number of times done (workouts containing it) descending.
+		// Only show exercises that have at least one completed set with actual data written.
 		const finishedWorkouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
 		const finishedWorkoutIds = new Set(finishedWorkouts.map((w) => w.id));
 		const allWEs = await db.workoutExercises.toArray();
+		const finishedWEs = allWEs.filter((we) => finishedWorkoutIds.has(we.workoutId));
+
+		// Count by exercise: only count WEs that have at least one completed set with a value
 		const countsByEx: Record<string, number> = {};
-		for (const we of allWEs) {
-			if (finishedWorkoutIds.has(we.workoutId)) {
+		for (const we of finishedWEs) {
+			const hasData = await db.sets
+				.where('workoutExerciseId').equals(we.id)
+				.filter((s) => s.completed && (s.weight != null || s.reps != null || s.durationSec != null || s.distanceM != null))
+				.first();
+			if (hasData) {
 				countsByEx[we.exerciseId] = (countsByEx[we.exerciseId] ?? 0) + 1;
 			}
 		}

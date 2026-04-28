@@ -5,8 +5,9 @@
 		set: ExerciseSet;
 		index: number;
 		exerciseType: ExerciseType;
-		// Only weight placeholder cascades — reps are intentionally left blank each set
+		// Placeholders from last workout — shown greyed out, never auto-filled as values
 		placeholderWeight?: number;
+		placeholderReps?: number;
 		placeholderDurationSec?: number;
 		placeholderDistanceKm?: number;
 		onComplete: () => void;
@@ -19,6 +20,7 @@
 		index,
 		exerciseType,
 		placeholderWeight,
+		placeholderReps,
 		placeholderDurationSec,
 		placeholderDistanceKm,
 		onComplete,
@@ -89,7 +91,7 @@
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder="reps"
+				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
@@ -99,7 +101,7 @@
 			<input
 				type="number"
 				inputmode="numeric"
-				placeholder="reps"
+				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
