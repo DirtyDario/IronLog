@@ -178,38 +178,26 @@ function createActiveWorkoutStore() {
 			update((s) => ({ ...s, prAlerts: [] }));
 		},
 
-		async finish() {
+		async finish(resolvedSets?: Array<{ id: string; weight?: number; reps?: number; durationSec?: number; distanceM?: number }>) {
 			const state = get({ subscribe });
 			if (!state.workout || !state.startedAt) return;
 
-			// Auto-complete sets that have valid values but aren't marked complete
-			// We need exercise types to know what "valid" means per exercise
-			const exerciseIds = state.workoutExercises.map((we) => we.exerciseId);
-			const exercises = await db.exercises.bulkGet(exerciseIds);
-			const typeMap: Record<string, string> = {};
-			state.workoutExercises.forEach((we, i) => {
-				typeMap[we.id] = exercises[i]?.type ?? 'weightReps';
-			});
-
-			const autoCompleteOps: Promise<void>[] = [];
-			for (const we of state.workoutExercises) {
-				const exType = typeMap[we.id];
-				const sets = state.sets[we.id] ?? [];
-				for (const s of sets) {
-					if (s.completed) continue;
-					let valid = false;
-					if (exType === 'weightReps') valid = s.weight != null && s.reps != null;
-					else if (exType === 'bodyweightReps') valid = s.reps != null;
-					else if (exType === 'time') valid = s.durationSec != null;
-					else if (exType === 'distance') valid = s.distanceM != null;
-					if (valid) {
-						autoCompleteOps.push(
-							db.sets.update(s.id, { completed: true, ...syncMeta() }).then(() => {})
-						);
-					}
-				}
+			// Apply pre-resolved set values from the page (which knows placeholder values)
+			// then mark completed. Only sets included in resolvedSets (reps/value present) are completed.
+			if (resolvedSets && resolvedSets.length > 0) {
+				await Promise.all(
+					resolvedSets.map((r) =>
+						db.sets.update(r.id, {
+							...(r.weight != null ? { weight: r.weight } : {}),
+							...(r.reps != null ? { reps: r.reps } : {}),
+							...(r.durationSec != null ? { durationSec: r.durationSec } : {}),
+							...(r.distanceM != null ? { distanceM: r.distanceM } : {}),
+							completed: true,
+							...syncMeta()
+						})
+					)
+				);
 			}
-			await Promise.all(autoCompleteOps);
 
 			const durationSec = Math.round((Date.now() - state.startedAt.getTime()) / 1000);
 			await db.workouts.update(state.workout.id, { finishedAt: new Date(), durationSec, ...syncMeta() });

@@ -10,9 +10,19 @@
 		placeholderReps?: number;
 		placeholderDurationSec?: number;
 		placeholderDistanceKm?: number;
-		onComplete: () => void;
+		onComplete: (resolved?: ResolvedValues) => void;
 		onChange: (changes: Partial<ExerciseSet>) => void;
 		onDelete: () => void;
+		// Parent registers a getValues fn to read current inputs on finish
+		onRegister?: (getValues: () => ResolvedValues | null) => void;
+	}
+
+	export interface ResolvedValues {
+		id: string;
+		weight?: number;
+		reps?: number;
+		durationSec?: number;
+		distanceM?: number;
 	}
 
 	let {
@@ -25,21 +35,20 @@
 		placeholderDistanceKm,
 		onComplete,
 		onChange,
-		onDelete
+		onDelete,
+		onRegister
 	}: Props = $props();
 
-	// Use local mutable state — empty until the user types
 	let weight = $state('');
 	let reps = $state('');
 	let durationSec = $state('');
 	let distanceKm = $state('');
 
-	// Re-initialise when a different set is passed as prop (Bug 3 fix)
+	// Re-initialise when a different set is passed (Bug 3 fix)
 	let currentSetId = $state('');
 	$effect(() => {
 		if (set.id !== currentSetId) {
 			currentSetId = set.id;
-			// Only populate if the set already has a stored value (e.g. restored from DB)
 			weight = set.weight?.toString() ?? '';
 			reps = set.reps?.toString() ?? '';
 			durationSec = set.durationSec?.toString() ?? '';
@@ -47,36 +56,55 @@
 		}
 	});
 
-	function handleComplete() {
-		// Manual tap: persist values + start rest timer
-		let changes: Partial<ExerciseSet> = { completed: true };
+	// Register getValues with parent so finish() can collect all inputs
+	$effect(() => {
+		onRegister?.(() => getResolvedValues());
+	});
+
+	/**
+	 * Resolve the current input state into final values.
+	 * - Weight empty → use placeholder (last workout value)
+	 * - Reps empty → return null (set is skipped, not counted)
+	 * - Already completed → return null (no re-processing needed)
+	 */
+	function getResolvedValues(): ResolvedValues | null {
+		if (set.completed) return null;
 		if (exerciseType === 'weightReps') {
-			const w = parseFloat(weight) || (placeholderWeight ?? undefined);
-			const r = parseInt(reps) || undefined;
-			changes = { weight: w, reps: r, completed: true };
+			const r = parseInt(reps);
+			if (!r) return null; // reps empty → skip this set
+			const w = parseFloat(weight) || placeholderWeight;
+			return { id: set.id, weight: w, reps: r };
 		} else if (exerciseType === 'bodyweightReps') {
-			changes = { reps: parseInt(reps) || undefined, completed: true };
+			const r = parseInt(reps);
+			if (!r) return null;
+			return { id: set.id, reps: r };
 		} else if (exerciseType === 'time') {
-			changes = { durationSec: parseInt(durationSec) || (placeholderDurationSec ?? undefined), completed: true };
+			const d = parseInt(durationSec) || placeholderDurationSec;
+			if (!d) return null;
+			return { id: set.id, durationSec: d };
 		} else if (exerciseType === 'distance') {
-			const d = parseFloat(distanceKm) || (placeholderDistanceKm ?? undefined);
-			changes = { distanceM: d != null ? d * 1000 : undefined, completed: true };
+			const km = parseFloat(distanceKm) || placeholderDistanceKm;
+			if (!km) return null;
+			return { id: set.id, distanceM: km * 1000 };
 		}
-		onChange(changes);
-		onComplete(); // triggers rest timer
+		return null;
+	}
+
+	function handleComplete() {
+		const resolved = getResolvedValues();
+		if (!resolved) return; // reps empty → don't complete
+		onChange({ ...resolved, completed: true });
+		onComplete(resolved); // passes values up for PR check + rest timer
 	}
 
 	function handleUncomplete() {
-		// Tap on already-completed set → uncomplete and make editable again
 		onChange({ completed: false });
 	}
 </script>
 
 <div class="flex items-center gap-2 py-1 {set.completed ? 'opacity-50' : ''}">
-	<!-- Set number -->
 	<span class="w-6 shrink-0 text-center text-sm font-medium text-zinc-400">{index + 1}</span>
 
-	<!-- Inputs -->
 	<div class="flex flex-1 gap-2">
 		{#if exerciseType === 'weightReps'}
 			<input
@@ -130,22 +158,17 @@
 		{/if}
 	</div>
 
-	<!-- Complete / done button -->
 	{#if set.completed}
 		<button
 			onclick={handleUncomplete}
 			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-green-500 active:text-zinc-400"
 			aria-label="Completed — tap to undo"
-		>
-			✓
-		</button>
+		>✓</button>
 	{:else}
 		<button
 			onclick={handleComplete}
 			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 active:bg-orange-500 active:text-white transition-colors"
 			aria-label="Complete set"
-		>
-			✓
-		</button>
+		>✓</button>
 	{/if}
 </div>

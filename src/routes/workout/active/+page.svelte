@@ -74,21 +74,42 @@
 		activeWorkout.reorderExercises(e.detail.items);
 	}
 
-	async function handleSetComplete(set: ExerciseSet, workoutExerciseId: string, exerciseId: string) {
-		await activeWorkout.updateSet(set.id, workoutExerciseId, { completed: true });
+	async function handleSetComplete(set: ExerciseSet, workoutExerciseId: string, exerciseId: string, resolvedValues?: ResolvedValues) {
+		// Use resolved values from SetRow (includes placeholder weight fill-in)
+		const changes = resolvedValues
+			? { ...resolvedValues, completed: true }
+			: { completed: true };
+		await activeWorkout.updateSet(set.id, workoutExerciseId, changes);
 		restTimer.start($restTimer.total);
 		const exercise = exerciseMap[exerciseId];
 		if (exercise) {
-			const isNewPR = await checkAndSavePR(exerciseId, { ...set, completed: true }, new Date());
+			const merged = { ...set, ...changes };
+			const isNewPR = await checkAndSavePR(exerciseId, merged, new Date());
 			if (isNewPR) activeWorkout.addPrAlert(exercise.name);
 		}
 	}
 
+	import type { ResolvedValues } from '$lib/components/SetRow.svelte';
+
+	// Registry: setId → getValues fn registered by each SetRow
+	const setValueRegistry = new Map<string, () => ResolvedValues | null>();
+
+	function registerSet(setId: string, getFn: () => ResolvedValues | null) {
+		setValueRegistry.set(setId, getFn);
+	}
+
 	async function handleFinish() {
-		// Bug 5 fix: guard undefined, prevent double-tap
 		const workoutId = $activeWorkout.workout?.id;
 		if (!workoutId) return;
-		await activeWorkout.finish();
+
+		// Collect resolved values from all live SetRow components
+		const resolved: ResolvedValues[] = [];
+		for (const [, getFn] of setValueRegistry) {
+			const v = getFn();
+			if (v) resolved.push(v);
+		}
+
+		await activeWorkout.finish(resolved);
 		goto(`/workout/summary/${workoutId}`);
 	}
 
@@ -307,7 +328,8 @@
 						placeholderReps={ph.reps}
 						placeholderDurationSec={ph.durationSec}
 						placeholderDistanceKm={ph.distanceKm}
-						onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}
+						onComplete={(resolved) => handleSetComplete(set, we.id, we.exerciseId, resolved)}
+						onRegister={(getFn) => registerSet(set.id, getFn)}
 						onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
 						onDelete={() => activeWorkout.deleteSet(set.id, we.id)}
 					/>
