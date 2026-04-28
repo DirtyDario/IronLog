@@ -41,17 +41,6 @@ export const auth = {
 	// No-op init — kept for backwards compat with layout calls
 	init() {},
 
-	async signInWithEmail(email: string): Promise<{ error: string | null }> {
-		const redirectUrl =
-			typeof window !== 'undefined' ? `${window.location.origin}/settings` : undefined;
-
-		const { error } = await supabase.auth.signInWithOtp({
-			email,
-			options: { emailRedirectTo: redirectUrl }
-		});
-		return { error: error?.message ?? null };
-	},
-
 	async signOut() {
 		await supabase.auth.signOut();
 	}
