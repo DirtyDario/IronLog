@@ -46,6 +46,7 @@
 	let muscleData: MuscleCount[] = $state([]);
 	let bests: ExerciseBest[] = $state([]);
 	let exercises: Exercise[] = $state([]);
+	let exercisePrCounts: Record<string, number> = $state({});
 	let selectedExId: string | null = $state(null);
 	let prs: PersonalRecord[] = $state([]);
 
@@ -53,13 +54,14 @@
 	let activeTab = $state<'overview' | 'frequency' | 'muscles' | 'progress' | 'bests'>('overview');
 
 	onMount(async () => {
-		const [totals, str, weekly, muscle, allBests, exs] = await Promise.all([
+		const [totals, str, weekly, muscle, allBests, exs, allPrs] = await Promise.all([
 			getLifetimeTotals(),
 			getStreak(),
 			getWeeklyFrequency(),
 			getMuscleDistribution(),
 			getAllTimeBests(),
-			db.exercises.orderBy('name').toArray()
+			db.exercises.orderBy('name').toArray(),
+			db.personalRecords.toArray()
 		]);
 		totalWorkouts = totals.totalWorkouts;
 		totalTimeSec = totals.totalTimeSec;
@@ -69,7 +71,19 @@
 		weeklyData = weekly;
 		muscleData = muscle;
 		bests = allBests;
-		exercises = exs;
+
+		// Build PR count per exercise, keep only exercises with at least one PR
+		const counts: Record<string, number> = {};
+		for (const pr of allPrs) {
+			counts[pr.exerciseId] = (counts[pr.exerciseId] ?? 0) + 1;
+		}
+		exercisePrCounts = counts;
+		const exIds = new Set(Object.keys(counts));
+		// Sort by PR count descending, then alphabetically
+		exercises = exs
+			.filter((e) => exIds.has(e.id))
+			.sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0) || a.name.localeCompare(b.name));
+
 		loaded = true;
 	});
 
@@ -301,7 +315,7 @@
 			>
 				<option value={null}>Select an exercise...</option>
 				{#each exercises as ex}
-					<option value={ex.id}>{ex.name}</option>
+					<option value={ex.id}>{ex.name} ({exercisePrCounts[ex.id] ?? 0})</option>
 				{/each}
 			</select>
 

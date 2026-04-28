@@ -138,6 +138,21 @@ function createActiveWorkoutStore() {
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [] });
 		},
 
+		async deleteExercise(workoutExerciseId: string) {
+			await db.sets.where('workoutExerciseId').equals(workoutExerciseId).delete();
+			await db.workoutExercises.delete(workoutExerciseId);
+			schedulePush();
+			update((s) => {
+				const sets = { ...s.sets };
+				delete sets[workoutExerciseId];
+				return {
+					...s,
+					workoutExercises: s.workoutExercises.filter((we) => we.id !== workoutExerciseId),
+					sets
+				};
+			});
+		},
+
 		async reorderExercises(newList: WorkoutExercise[]) {
 			// Update order values and persist
 			const updated = newList.map((we, i) => ({ ...we, order: i }));
