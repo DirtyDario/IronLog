@@ -5,15 +5,16 @@
 	import { onMount } from 'svelte';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
 	import { schedulePush } from '$lib/services/sync';
-	import { dndzone, type DndEvent } from 'svelte-dnd-action';
+	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
 	import { flip } from 'svelte/animate';
 
-	const FLIP_MS = 250;
+	const FLIP_MS = 200;
+
+	type Item = { re: RoutineExercise; exercise: Exercise };
 
 	let routine: Routine | null = $state(null);
-	let items: Array<{ re: RoutineExercise; exercise: Exercise }> = $state([]);
+	let items: Item[] = $state([]);
 	let showPicker = $state(false);
-	let dragDisabled = $state(true);
 
 	onMount(async () => {
 		const id = $page.params.id;
@@ -24,7 +25,7 @@
 	async function loadItems() {
 		if (!routine) return;
 		const res = await db.routineExercises.where('routineId').equals(routine.id).sortBy('order');
-		const out = [];
+		const out: Item[] = [];
 		for (const re of res) {
 			const exercise = await db.exercises.get(re.exerciseId);
 			if (exercise) out.push({ re, exercise });
@@ -60,23 +61,20 @@
 		schedulePush();
 	}
 
-	async function handleReorder(newItems: Array<{ re: RoutineExercise; exercise: Exercise }>) {
-		// Update order in Dexie
+	function handleConsider(e: CustomEvent<DndEvent<Item>>) {
+		// Update local list immediately for smooth animation
+		items = e.detail.items;
+	}
+
+	async function handleFinalize(e: CustomEvent<DndEvent<Item>>) {
+		items = e.detail.items;
+		// Persist new order to Dexie
 		await Promise.all(
-			newItems.map((item, i) =>
+			items.map((item, i) =>
 				db.routineExercises.update(item.re.id, { order: i, _synced: false, _lastModified: Date.now() })
 			)
 		);
 		schedulePush();
-	}
-
-	function startDrag(e: PointerEvent) {
-		e.preventDefault();
-		dragDisabled = false;
-	}
-
-	function stopDrag() {
-		dragDisabled = true;
 	}
 </script>
 
@@ -98,9 +96,9 @@
 		</div>
 	{:else}
 		<div
-			use:dndzone={{ items, flipDurationMs: FLIP_MS, dropTargetStyle: {}, dragDisabled }}
-			onconsider={(e: CustomEvent<DndEvent<typeof items[0]>>) => { items = e.detail.items; }}
-			onfinalize={(e: CustomEvent<DndEvent<typeof items[0]>>) => { items = e.detail.items; dragDisabled = true; handleReorder(items); }}
+			use:dragHandleZone={{ items, flipDurationMs: FLIP_MS, dropTargetStyle: {} }}
+			onconsider={handleConsider}
+			onfinalize={handleFinalize}
 			class="flex flex-col gap-3"
 		>
 			{#each items as item (item.re.id)}
@@ -108,12 +106,11 @@
 					<div class="flex items-center gap-3 mb-3">
 						<!-- Drag handle -->
 						<div
+							use:dragHandle
 							role="button"
 							tabindex="0"
-							class="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 px-1 text-lg leading-none flex-shrink-0"
 							aria-label="Drag to reorder"
-							onpointerdown={startDrag}
-							onpointerup={stopDrag}
+							class="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-500 px-1 text-xl leading-none flex-shrink-0"
 						>
 							⠿
 						</div>

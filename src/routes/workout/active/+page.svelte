@@ -8,21 +8,18 @@
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
 	import SetRow from '$lib/components/SetRow.svelte';
 	import RestTimerBar from '$lib/components/RestTimerBar.svelte';
-	import { dndzone, type DndEvent } from 'svelte-dnd-action';
+	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
 	import { flip } from 'svelte/animate';
 
-	const FLIP_MS = 250;
+	const FLIP_MS = 200;
 
-	let dragDisabled = $state(true);
+	// Local copy of the list — updated optimistically during drag, persisted on drop
+	let exercises = $state<WorkoutExercise[]>([]);
 
-	function startDrag(e: PointerEvent) {
-		e.preventDefault();
-		dragDisabled = false;
-	}
-
-	function stopDrag() {
-		dragDisabled = true;
-	}
+	// Keep local list in sync when store changes (e.g. after adding an exercise)
+	$effect(() => {
+		exercises = [...$activeWorkout.workoutExercises];
+	});
 
 	let showPicker = $state(false);
 	let showFinishConfirm = $state(false);
@@ -41,15 +38,23 @@
 	});
 
 	$effect(() => {
-		// If no active workout in store (e.g. after discard + page reload), go home
-		// Don't auto-start — user must explicitly tap "Start Workout"
 		if (!$activeWorkout.workout && typeof window !== 'undefined') {
-			// Small delay to let the store hydrate first
 			setTimeout(() => {
 				if (!$activeWorkout.workout) goto('/');
 			}, 100);
 		}
 	});
+
+	function handleConsider(e: CustomEvent<DndEvent<WorkoutExercise>>) {
+		// Update local list immediately so animation plays smoothly
+		exercises = e.detail.items;
+	}
+
+	function handleFinalize(e: CustomEvent<DndEvent<WorkoutExercise>>) {
+		exercises = e.detail.items;
+		// Persist the new order
+		activeWorkout.reorderExercises(e.detail.items);
+	}
 
 	async function handleSetComplete(set: ExerciseSet, workoutExerciseId: string, exerciseId: string) {
 		await activeWorkout.updateSet(set.id, workoutExerciseId, { completed: true });
@@ -123,71 +128,68 @@
 
 	<!-- Exercises -->
 	<div
-		use:dndzone={{ items: $activeWorkout.workoutExercises, flipDurationMs: FLIP_MS, dropTargetStyle: {}, dragDisabled }}
-		onconsider={(e: CustomEvent<DndEvent<WorkoutExercise>>) => { activeWorkout.reorderExercises(e.detail.items); }}
-		onfinalize={(e: CustomEvent<DndEvent<WorkoutExercise>>) => { activeWorkout.reorderExercises(e.detail.items); dragDisabled = true; }}
+		use:dragHandleZone={{ items: exercises, flipDurationMs: FLIP_MS, dropTargetStyle: {} }}
+		onconsider={handleConsider}
+		onfinalize={handleFinalize}
 		class="flex flex-col gap-4"
 	>
-	{#each $activeWorkout.workoutExercises as we (we.id)}
-		{@const exercise = exerciseMap[we.exerciseId]}
-		{@const sets = $activeWorkout.sets[we.id] ?? []}
-		<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
-			<div class="mb-3 flex items-center gap-3">
-				<!-- Drag handle -->
-				<div
-					role="button"
-					tabindex="0"
-					class="drag-handle cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 px-1 text-lg leading-none flex-shrink-0"
-					aria-label="Drag to reorder"
-					onpointerdown={startDrag}
-					onpointerup={stopDrag}
-				>
-					⠿
-				</div>
-				<div class="flex-1 flex items-center justify-between">
-					<div>
+		{#each exercises as we (we.id)}
+			{@const exercise = exerciseMap[we.exerciseId]}
+			{@const sets = $activeWorkout.sets[we.id] ?? []}
+			<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
+				<div class="mb-3 flex items-center gap-3">
+					<!-- Drag handle — only this triggers drag -->
+					<div
+						use:dragHandle
+						role="button"
+						tabindex="0"
+						aria-label="Drag to reorder"
+						class="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-500 px-1 text-xl leading-none flex-shrink-0"
+					>
+						⠿
+					</div>
+					<div class="flex-1">
 						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}</h2>
 						{#if exercise?.muscleGroup}
 							<span class="text-xs text-zinc-500 capitalize">{exercise.muscleGroup}</span>
 						{/if}
 					</div>
 				</div>
+
+				<!-- Set header -->
+				<div class="mb-1 grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 px-1 text-xs font-medium text-zinc-500">
+					<span>Set</span>
+					{#if exercise?.type === 'weightReps'}
+						<span>kg</span><span>Reps</span>
+					{:else if exercise?.type === 'bodyweightReps'}
+						<span>Reps</span><span></span>
+					{:else if exercise?.type === 'time'}
+						<span>Sec</span><span></span>
+					{:else}
+						<span>km</span><span></span>
+					{/if}
+					<span></span>
+				</div>
+
+				{#each sets as set, i (set.id)}
+					<SetRow
+						{set}
+						index={i}
+						exerciseType={exercise?.type ?? 'weightReps'}
+						onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}
+						onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
+						onDelete={() => activeWorkout.deleteSet(set.id, we.id)}
+					/>
+				{/each}
+
+				<button
+					onclick={() => activeWorkout.addSet(we.id)}
+					class="mt-2 w-full rounded-xl border border-dashed border-zinc-700 py-3 text-sm text-zinc-400 active:bg-zinc-800"
+				>
+					+ Add Set
+				</button>
 			</div>
-
-			<!-- Set header -->
-			<div class="mb-1 grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 px-1 text-xs font-medium text-zinc-500">
-				<span>Set</span>
-				{#if exercise?.type === 'weightReps'}
-					<span>kg</span><span>Reps</span>
-				{:else if exercise?.type === 'bodyweightReps'}
-					<span>Reps</span><span></span>
-				{:else if exercise?.type === 'time'}
-					<span>Sec</span><span></span>
-				{:else}
-					<span>km</span><span></span>
-				{/if}
-				<span></span>
-			</div>
-
-			{#each sets as set, i (set.id)}
-				<SetRow
-					{set}
-					index={i}
-					exerciseType={exercise?.type ?? 'weightReps'}
-					onComplete={() => handleSetComplete(set, we.id, we.exerciseId)}
-					onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
-					onDelete={() => activeWorkout.deleteSet(set.id, we.id)}
-				/>
-			{/each}
-
-			<button
-				onclick={() => activeWorkout.addSet(we.id)}
-				class="mt-2 w-full rounded-xl border border-dashed border-zinc-700 py-3 text-sm text-zinc-400 active:bg-zinc-800"
-			>
-				+ Add Set
-			</button>
-		</div>
-	{/each}
+		{/each}
 	</div>
 
 	<button
