@@ -152,8 +152,17 @@
 	});
 
 	const muscleColors = [
-		'#f97316','#fb923c','#fdba74','#fcd34d','#a3e635',
-		'#34d399','#22d3ee','#60a5fa','#a78bfa','#f472b6','#94a3b8'
+		'#f97316', // orange  — chest
+		'#3b82f6', // blue    — back
+		'#22c55e', // green   — legs
+		'#a855f7', // purple  — shoulders
+		'#ef4444', // red     — biceps
+		'#eab308', // yellow  — triceps
+		'#06b6d4', // cyan    — glutes
+		'#ec4899', // pink    — core
+		'#14b8a6', // teal    — cardio
+		'#f59e0b', // amber   — full body
+		'#6366f1', // indigo  — other
 	];
 
 	let muscleChartData = $derived({
@@ -190,6 +199,23 @@
 		scales: {
 			x: { grid: { color: '#27272a' }, ticks: { color: '#71717a', maxTicksLimit: 6 } },
 			y: { grid: { color: '#27272a' }, ticks: { color: '#71717a' }, beginAtZero: true }
+		}
+	};
+
+	const progressChartOpts = {
+		responsive: true,
+		maintainAspectRatio: false,
+		plugins: { legend: { display: false } },
+		scales: {
+			x: { grid: { color: '#27272a' }, ticks: { color: '#71717a', maxTicksLimit: 6 } },
+			y: {
+				grid: { color: '#27272a' },
+				ticks: {
+					color: '#71717a',
+					callback: (value: number) => `${value} kg`
+				},
+				beginAtZero: false
+			}
 		}
 	};
 
@@ -365,7 +391,7 @@
 				<div class="rounded-2xl bg-zinc-900 p-4">
 					<p class="mb-3 font-semibold">{selectedExercise?.name}</p>
 					<div class="h-48">
-						<Line data={progressChartData} options={chartOpts} />
+						<Line data={progressChartData} options={progressChartOpts} />
 					</div>
 					{#if prs.length}
 						{@const best = prs.reduce((b, pr) => ((pr.estimatedOneRM ?? 0) > (b.estimatedOneRM ?? 0) ? pr : b))}

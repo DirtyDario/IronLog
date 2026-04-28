@@ -162,6 +162,6 @@ export function formatDuration(sec: number): string {
 
 export function formatVolume(kg: number): string {
 	if (kg >= 1000000) return `${(kg / 1000000).toFixed(1)}M kg`;
-	if (kg >= 1000) return `${(kg / 1000).toFixed(1)}k kg`;
+	if (kg >= 1000) return `${(kg / 1000).toFixed(2).replace(/\.?0+$/, '')}t`;
 	return `${kg} kg`;
 }
