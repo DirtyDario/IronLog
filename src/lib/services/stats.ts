@@ -17,7 +17,8 @@ export async function getLifetimeTotals() {
 
 // ── Training streak (consecutive weeks with ≥1 workout) ─────────────────────
 
-// Bug 18 fix: use Monday-based date arithmetic instead of fragile ISO week strings
+// H4 fix: use finishedAt for streak (not date) so DST-straddling workouts are placed
+// in the correct calendar week. Also only count finished workouts.
 export async function getStreak(): Promise<number> {
 	const workouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
 	if (!workouts.length) return 0;
@@ -32,7 +33,8 @@ export async function getStreak(): Promise<number> {
 		return date.getTime();
 	}
 
-	const trainedWeeks = new Set(workouts.map((w) => weekMonday(new Date(w.date))));
+	// H4: use finishedAt (not date) so midnight-spanning workouts land in the right week
+	const trainedWeeks = new Set(workouts.map((w) => weekMonday(new Date(w.finishedAt!))));
 
 	const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 	const thisWeek = weekMonday(new Date());
@@ -51,7 +53,8 @@ export async function getStreak(): Promise<number> {
 export interface WeekCount { label: string; count: number }
 
 export async function getWeeklyFrequency(): Promise<WeekCount[]> {
-	const workouts = await db.workouts.toArray();
+	// H5: only count finished workouts in frequency chart
+	const workouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
 
 	const weeks: WeekCount[] = [];
 	const now = new Date();
@@ -84,10 +87,14 @@ export async function getWeeklyFrequency(): Promise<WeekCount[]> {
 export interface MuscleCount { muscle: string; count: number }
 
 export async function getMuscleDistribution(): Promise<MuscleCount[]> {
+	// H6: only count workoutExercises from finished workouts
+	const finishedWorkouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
+	const finishedIds = new Set(finishedWorkouts.map((w) => w.id));
 	const wes = await db.workoutExercises.toArray();
 	const map = new Map<string, number>();
 
 	for (const we of wes) {
+		if (!finishedIds.has(we.workoutId)) continue; // H6: skip unfinished
 		const ex = await db.exercises.get(we.exerciseId);
 		if (!ex) continue;
 		const mg = ex.muscleGroup ?? 'other';
@@ -134,12 +141,18 @@ export async function getAllTimeBests(): Promise<ExerciseBest[]> {
 				bestDistance: pr.distanceM
 			});
 		} else {
-			// For strength: compare by weight within same bucket; use epley for display
+			// M7: strength with weight → compare by estimated 1RM
 			if (pr.weight && pr.reps) {
 				const orm = Math.round(pr.weight * (1 + pr.reps / 30));
 				if (!existing.bestOneRM || orm > existing.bestOneRM) {
 					existing.bestOneRM = orm;
 					existing.bestWeight = pr.weight;
+					existing.bestReps = pr.reps;
+				}
+			}
+			// M7: bodyweight (reps only, no weight) → compare by reps
+			if (!pr.weight && pr.reps) {
+				if (!existing.bestReps || pr.reps > existing.bestReps) {
 					existing.bestReps = pr.reps;
 				}
 			}

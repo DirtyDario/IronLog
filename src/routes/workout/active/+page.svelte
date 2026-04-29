@@ -91,9 +91,18 @@
 		setValueRegistry.set(setId, getFn);
 	}
 
+	// S10: clean up registry when a set is deleted
+	function unregisterSet(setId: string) {
+		setValueRegistry.delete(setId);
+	}
+
+	// H8: guard against double-tap finish
+	let isFinishing = $state(false);
+
 	async function handleFinish() {
 		const workoutId = $activeWorkout.workout?.id;
-		if (!workoutId) return;
+		if (!workoutId || isFinishing) return;
+		isFinishing = true;
 
 		// Collect resolved values from all live SetRow components
 		const resolved: ResolvedValues[] = [];
@@ -226,7 +235,8 @@
 			</button>
 			<button
 				onclick={() => (showFinishConfirm = true)}
-				class="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white active:bg-orange-600"
+				class="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+				disabled={isFinishing}
 			>
 				Finish
 			</button>
@@ -309,8 +319,9 @@
 						placeholderDistanceKm={ph.distanceKm}
 						onComplete={(resolved) => handleSetComplete(set, we.id, we.exerciseId, resolved)}
 						onRegister={(getFn) => registerSet(set.id, getFn)}
+						onUnregister={() => unregisterSet(set.id)}
 						onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
-						onDelete={() => activeWorkout.deleteSet(set.id, we.id)}
+						onDelete={() => { unregisterSet(set.id); activeWorkout.deleteSet(set.id, we.id); }}
 					/>
 				{/each}
 
@@ -351,7 +362,7 @@
 			</p>
 			<div class="mt-4 flex gap-3">
 				<button onclick={() => (showFinishConfirm = false)} class="flex-1 rounded-xl border border-zinc-700 py-3 font-medium text-zinc-300">Cancel</button>
-				<button onclick={handleFinish} class="flex-1 rounded-xl bg-orange-500 py-3 font-bold text-white">Finish</button>
+				<button onclick={handleFinish} disabled={isFinishing} class="flex-1 rounded-xl bg-orange-500 py-3 font-bold text-white disabled:opacity-50">Finish</button>
 			</div>
 		</div>
 	</div>

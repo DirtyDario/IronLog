@@ -12,45 +12,60 @@
 
 	let { children } = $props();
 
-	onMount(async () => {
-		// Seed default exercises
-		await seedDefaultExercises();
+	onMount(() => {
+		// H16: onMount must return a sync cleanup fn (not async).
+		// All async work is fired-and-forgotten inside, cleanup fn is returned synchronously.
+		let authUnsub: (() => void) | null = null;
 
-		// One-time v4 PR recompute (runs if migration cleared the guard)
-		if (!localStorage.getItem('prRecomputeV4Done')) {
-			recomputeAllPRs().catch(console.error);
-		}
+		(async () => {
+			await seedDefaultExercises();
 
-		// Bug 24 fix: never delete the currently active workout, increase cutoff to 48h
-		const activeId = get(activeWorkout).workout?.id;
-		const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-		const orphaned = await db.workouts
-			.filter((w) => !w.finishedAt && w.id !== activeId && new Date(w.date) < cutoff)
-			.toArray();
-		for (const w of orphaned) {
-			const wes = await db.workoutExercises.where('workoutId').equals(w.id).toArray();
-			for (const we of wes) {
-				await db.sets.where('workoutExerciseId').equals(we.id).delete();
+			// S7: localStorage guard is set OUTSIDE the IDB upgrade transaction (in schema.ts
+			// the removeItem was moved out). Here we clear it after DB has opened so recompute
+			// runs on next load after a v4 migration.
+			if (!localStorage.getItem('prRecomputeV4Done')) {
+				recomputeAllPRs().catch(console.error);
 			}
-			await db.workoutExercises.where('workoutId').equals(w.id).delete();
-			await db.workouts.delete(w.id);
-		}
 
-		// Initialize auth
-		auth.init();
+			// H12: Rehydrate active workout from IDB on app load in case the store is empty
+			// (e.g. after a page refresh mid-workout)
+			if (!get(activeWorkout).workout) {
+				await activeWorkout.rehydrate();
+			}
 
-		// Bug 9 fix: store unsub and return it so Svelte cleans up on unmount
-		let hasSynced = false;
-		const unsub = auth.subscribe((state) => {
-			if (!state.loading && state.user && !hasSynced) {
-				hasSynced = true;
-				syncNow().catch(console.error);
+			// Orphan cleanup: never delete currently active workout; 48h cutoff
+			const activeId = get(activeWorkout).workout?.id;
+			const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+			const orphaned = await db.workouts
+				.filter((w) => !w.finishedAt && w.id !== activeId && new Date(w.date) < cutoff)
+				.toArray();
+			for (const w of orphaned) {
+				const wes = await db.workoutExercises.where('workoutId').equals(w.id).toArray();
+				for (const we of wes) {
+					await db.sets.where('workoutExerciseId').equals(we.id).delete();
+				}
+				await db.workoutExercises.where('workoutId').equals(w.id).delete();
+				await db.workouts.delete(w.id);
 			}
-			if (!state.user) {
-				hasSynced = false;
-			}
-		});
-		return unsub;
+
+			// Initialize auth
+			auth.init();
+
+			// H16: store unsub reference for cleanup
+			let hasSynced = false;
+			authUnsub = auth.subscribe((state) => {
+				if (!state.loading && state.user && !hasSynced) {
+					hasSynced = true;
+					syncNow().catch(console.error);
+				}
+				if (!state.user) {
+					hasSynced = false;
+				}
+			});
+		})();
+
+		// H16: return sync cleanup fn — unsubscribes auth if it was set up
+		return () => { authUnsub?.(); };
 	});
 
 	const tabs = [

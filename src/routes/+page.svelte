@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, afterNavigate } from '$app/navigation';
 	import { activeWorkout } from '$lib/stores/activeWorkout';
 	import { db } from '$lib/db/schema';
 	import { onMount } from 'svelte';
@@ -8,14 +8,18 @@
 	let recentWorkouts: Workout[] = $state([]);
 	let showDiscardConfirm = $state(false);
 
-	onMount(async () => {
+	async function loadRecent() {
 		recentWorkouts = await db.workouts
 			.orderBy('date')
 			.reverse()
 			.filter((w) => !!w.finishedAt)
 			.limit(3)
 			.toArray();
-	});
+	}
+
+	onMount(loadRecent);
+	// M15: refresh recent workouts when navigating back to home (e.g. after finishing a workout)
+	afterNavigate(loadRecent);
 
 	function formatDate(d: Date) {
 		return new Date(d).toLocaleDateString('en-GB', {

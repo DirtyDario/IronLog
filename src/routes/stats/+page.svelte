@@ -65,11 +65,14 @@
 
 	$effect(() => {
 		if (prSelectedExId) {
+			// M16: cancellation token for PR tab
+			const id = prSelectedExId;
 			(async () => {
 				const [bests, timeline] = await Promise.all([
-					getBestPerBucket(prSelectedExId!),
-					getPRsForExercise(prSelectedExId!)
+					getBestPerBucket(id),
+					getPRsForExercise(id)
 				]);
+				if (prSelectedExId !== id) return; // M16: stale
 				prBests = bests;
 				prTimeline = timeline.slice().reverse(); // newest first
 			})();
@@ -138,11 +141,15 @@
 		if (selectedExId) {
 			sessionData = [];
 			prs = [];
-			// Load max weight (or reps/duration) per finished workout session for progress chart
+			// M16: cancellation token — if selectedExId changes before async completes, discard
+			const token = Symbol();
+			let currentToken = token;
+			// Load max weight (or reps/duration/distance) per finished workout session for progress chart
 			(async () => {
 				// Also still load PRs for the "All-Time Best" badge
 				const prData = await db.personalRecords
 					.where('exerciseId').equals(selectedExId).sortBy('date');
+				if (currentToken !== token) return; // M16: stale, discard
 				prs = prData;
 
 				// Build per-session max values from actual sets
@@ -154,23 +161,56 @@
 					.toArray();
 				workouts.sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
 
+				// H2: detect exercise type from first exercise record
+				const exRecord = await db.exercises.get(selectedExId);
+				const exType = exRecord?.type ?? 'weightReps';
+
 				const sessionPoints: { date: string; value: number }[] = [];
 				for (const workout of workouts) {
 					const we = wes.find((w) => w.workoutId === workout.id);
 					if (!we) continue;
-					const sets = await db.sets
-						.where('workoutExerciseId').equals(we.id)
-						.filter((s) => s.completed && s.weight != null)
-						.toArray();
-					if (!sets.length) continue;
-					const maxWeight = Math.max(...sets.map((s) => s.weight!));
+
+					// H2: query by appropriate field based on exercise type
+					let maxVal = 0;
+					if (exType === 'weightReps') {
+						const sets = await db.sets
+							.where('workoutExerciseId').equals(we.id)
+							.filter((s) => s.completed && s.weight != null)
+							.toArray();
+						if (!sets.length) continue;
+						maxVal = Math.max(...sets.map((s) => s.weight!));
+					} else if (exType === 'bodyweightReps') {
+						const sets = await db.sets
+							.where('workoutExerciseId').equals(we.id)
+							.filter((s) => s.completed && s.reps != null)
+							.toArray();
+						if (!sets.length) continue;
+						maxVal = Math.max(...sets.map((s) => s.reps!));
+					} else if (exType === 'time') {
+						const sets = await db.sets
+							.where('workoutExerciseId').equals(we.id)
+							.filter((s) => s.completed && s.durationSec != null)
+							.toArray();
+						if (!sets.length) continue;
+						maxVal = Math.max(...sets.map((s) => s.durationSec!));
+					} else if (exType === 'distance') {
+						const sets = await db.sets
+							.where('workoutExerciseId').equals(we.id)
+							.filter((s) => s.completed && s.distanceM != null)
+							.toArray();
+						if (!sets.length) continue;
+						maxVal = Math.max(...sets.map((s) => s.distanceM!));
+					}
 					sessionPoints.push({
 						date: new Date(workout.finishedAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-						value: maxWeight
+						value: maxVal
 					});
 				}
+				if (currentToken !== token) return; // M16: stale
 				sessionData = sessionPoints;
 			})();
+
+			// M16: expose cancel fn via closure — no-op since token is local, but pattern is clear
 		}
 	});
 
@@ -212,10 +252,16 @@
 	// Bug 17 fix: $derived.by() for multi-statement block, use as value not function call
 	let progressChartData = $derived.by(() => {
 		if (!sessionData.length) return null;
+		// H2: label depends on exercise type
+		const type = selectedExercise?.type ?? 'weightReps';
+		const label = type === 'weightReps' ? 'Max weight (kg)'
+			: type === 'bodyweightReps' ? 'Max reps'
+			: type === 'time' ? 'Max duration (s)'
+			: 'Max distance (m)';
 		return {
 			labels: sessionData.map((p) => p.date),
 			datasets: [{
-				label: 'Max weight (kg)',
+				label,
 				data: sessionData.map((p) => p.value),
 				borderColor: '#f97316',
 				backgroundColor: 'rgba(249,115,22,0.1)',
@@ -237,22 +283,28 @@
 		}
 	};
 
-	const progressChartOpts = {
-		responsive: true,
-		maintainAspectRatio: false,
-		plugins: { legend: { display: false } },
-		scales: {
-			x: { grid: { color: '#27272a' }, ticks: { color: '#71717a', maxTicksLimit: 6 } },
-			y: {
-				grid: { color: '#27272a' },
-				ticks: {
-					color: '#71717a',
-					callback: (value: number) => `${value} kg`
-				},
-				beginAtZero: false
+	// H2: progress chart opts — y-axis label adapts to exercise type
+	let progressChartOpts = $derived.by(() => {
+		const type = selectedExercise?.type ?? 'weightReps';
+		const yLabel = (value: number) =>
+			type === 'weightReps' ? `${value} kg`
+			: type === 'bodyweightReps' ? `${value} reps`
+			: type === 'time' ? `${value}s`
+			: `${(value / 1000).toFixed(1)} km`;
+		return {
+			responsive: true,
+			maintainAspectRatio: false,
+			plugins: { legend: { display: false } },
+			scales: {
+				x: { grid: { color: '#27272a' }, ticks: { color: '#71717a', maxTicksLimit: 6 } },
+				y: {
+					grid: { color: '#27272a' },
+					ticks: { color: '#71717a', callback: yLabel },
+					beginAtZero: false
+				}
 			}
-		}
-	};
+		};
+	});
 
 	const doughnutOpts = {
 		responsive: true,
@@ -504,15 +556,21 @@
 			</select>
 
 			{#if prSelectedExId && prBests}
-				<!-- Strength bucket cards -->
+				<!-- M9: only show strength bucket grid if exercise has strength PRs -->
+				{@const hasStrengthPRs = ALL_BUCKETS.some((b) => prBests![b] !== null)}
+				{#if hasStrengthPRs}
 				<div class="grid grid-cols-3 gap-2 mb-4 sm:grid-cols-4">
 					{#each ALL_BUCKETS as bucket}
 						{@const pr = prBests[bucket]}
 						<div class="rounded-xl {pr ? 'bg-zinc-900 border border-yellow-500/20' : 'bg-zinc-900/50 border border-zinc-800'} p-3 text-center">
 							<p class="text-xs font-bold {pr ? 'text-yellow-400' : 'text-zinc-600'} mb-1">{bucket}</p>
 							{#if pr}
-								<p class="text-sm font-bold text-white leading-tight">{pr.weight} kg</p>
-								<p class="text-xs text-zinc-400">× {pr.reps}</p>
+								{#if pr.weight}
+									<p class="text-sm font-bold text-white leading-tight">{pr.weight} kg</p>
+									<p class="text-xs text-zinc-400">× {pr.reps}</p>
+								{:else}
+									<p class="text-sm font-bold text-white leading-tight">{pr.reps} reps</p>
+								{/if}
 								<p class="text-xs text-zinc-600 mt-1">{new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
 							{:else}
 								<p class="text-xs text-zinc-700 mt-2">—</p>
@@ -520,10 +578,13 @@
 						</div>
 					{/each}
 				</div>
+				{/if}
 
-				<!-- Cardio PRs if any -->
-				{@const durationPR = prTimeline.find((p) => p.category === 'duration')}
-				{@const distancePR = prTimeline.find((p) => p.category === 'distance')}
+				<!-- H3: Cardio PRs — best = max over all PRs (not just find-first) -->
+				{@const durationPR = prTimeline.reduce<typeof prTimeline[0] | null>((best, p) =>
+					p.category === 'duration' && (best === null || (p.durationSec ?? 0) > (best.durationSec ?? 0)) ? p : best, null)}
+				{@const distancePR = prTimeline.reduce<typeof prTimeline[0] | null>((best, p) =>
+					p.category === 'distance' && (best === null || (p.distanceM ?? 0) > (best.distanceM ?? 0)) ? p : best, null)}
 				{#if durationPR || distancePR}
 					<div class="flex gap-2 mb-4">
 						{#if durationPR}

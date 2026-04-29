@@ -68,20 +68,23 @@
 
 	async function removeExercise(id: string) {
 		await db.routineExercises.delete(id);
+		schedulePush(); // M3: trigger sync after removing exercise from routine
 		savedItems = savedItems.filter((i) => i.id !== id);
 	}
 
 	async function updateTargets(reId: string, targetSets: number, targetReps: number) {
+		// M2: guard NaN (parseInt returns NaN for empty/invalid input)
+		const sets = isNaN(targetSets) ? 1 : Math.max(1, targetSets);
+		const reps = isNaN(targetReps) ? 1 : Math.max(1, targetReps);
 		await db.routineExercises.update(reId, {
-			targetSets,
-			targetReps,
+			targetSets: sets,
+			targetReps: reps,
 			_synced: false,
 			_lastModified: Date.now()
 		});
 		schedulePush();
-		// Bug 23 fix: update in-memory state so controlled inputs don't revert
 		savedItems = savedItems.map((i) =>
-			i.id === reId ? { ...i, re: { ...i.re, targetSets, targetReps } } : i
+			i.id === reId ? { ...i, re: { ...i.re, targetSets: sets, targetReps: reps } } : i
 		);
 	}
 
@@ -166,11 +169,12 @@
 							<input
 								type="number"
 								inputmode="numeric"
+								min="1"
 								value={item.re.targetSets ?? 3}
 								onchange={(e) =>
 									updateTargets(
 										item.id,
-										parseInt((e.target as HTMLInputElement).value),
+										parseInt((e.target as HTMLInputElement).value) || 1,
 										item.re.targetReps ?? 10
 									)}
 								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -181,12 +185,13 @@
 							<input
 								type="number"
 								inputmode="numeric"
+								min="1"
 								value={item.re.targetReps ?? 10}
 								onchange={(e) =>
 									updateTargets(
 										item.id,
 										item.re.targetSets ?? 3,
-										parseInt((e.target as HTMLInputElement).value)
+										parseInt((e.target as HTMLInputElement).value) || 1
 									)}
 								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
 							/>

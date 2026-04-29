@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { epley, getPRsForWorkout } from '$lib/services/pr';
-	import confetti from 'canvas-confetti';
+	// S8: dynamic import to avoid SSR crash (canvas-confetti touches window/document)
 
 	interface ExerciseSummary {
 		exercise: Exercise;
@@ -96,7 +96,8 @@
 
 		// Fire confetti if any PRs were hit
 		if (prs.length > 0) {
-			setTimeout(() => {
+			setTimeout(async () => {
+				const { default: confetti } = await import('canvas-confetti');
 				confetti({
 					particleCount: 120,
 					spread: 80,

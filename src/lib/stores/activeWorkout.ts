@@ -48,6 +48,32 @@ function createActiveWorkoutStore() {
 	return {
 		subscribe,
 
+		async rehydrate() {
+			// H12: On app load (e.g. after page refresh), restore an in-progress workout
+			// from IDB if the store is empty. Looks for the most recent unfinished workout.
+			const unfinished = await db.workouts
+				.filter((w) => !w.finishedAt)
+				.toArray();
+			if (!unfinished.length) return;
+			// Use most recently started (latest date)
+			const workout = unfinished.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+			const workoutExercises = await db.workoutExercises.where('workoutId').equals(workout.id).sortBy('order');
+			const sets: Record<string, ExerciseSet[]> = {};
+			const previousSets: Record<string, LastWorkoutInfo | null> = {};
+			for (const we of workoutExercises) {
+				sets[we.id] = await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order');
+				previousSets[we.id] = await getLastFinishedSetsFor(we.exerciseId);
+			}
+			set({
+				workout,
+				workoutExercises,
+				sets,
+				startedAt: new Date(workout.date),
+				previousSets,
+				lastDiscarded: null
+			});
+		},
+
 		async start(name?: string) {
 			// Reset rest timer defensively
 			restTimer.stop();
@@ -194,13 +220,17 @@ function createActiveWorkoutStore() {
 			await db.workouts.update(workoutId, { finishedAt: new Date(), durationSec, ...syncMeta() });
 			schedulePush();
 
+			// S9: Detect PRs BEFORE clearing store (detectPRsForWorkout queries DB by workoutId,
+			// but store clear is synchronous — workout data is still in IDB at this point,
+			// so order doesn't strictly matter for DB queries, but clearing store first
+			// caused a race where navigation happened before PRs were saved).
+			const newPRs = await detectPRsForWorkout(workoutId);
+
 			// Reset rest timer
 			restTimer.stop();
 
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null });
 
-			// Detect and save PRs now that the workout is fully persisted
-			const newPRs = await detectPRsForWorkout(workoutId);
 			return newPRs;
 		},
 
@@ -274,15 +304,16 @@ function createActiveWorkoutStore() {
 			const snap = state.lastDiscarded;
 			if (!snap) return;
 
-			// Remove tombstones for this workout
+			// H13: Remove tombstones BEFORE re-inserting — otherwise sync might push the delete
 			const weIds = snap.workoutExercises.map((we) => we.id);
 			const setIds = Object.values(snap.sets).flat().map((s) => s.id);
 			await db.tombstones.bulkDelete([snap.workout.id, ...weIds, ...setIds]);
 
-			// Re-insert everything
-			await db.workouts.put(snap.workout);
-			await db.workoutExercises.bulkPut(snap.workoutExercises);
-			await db.sets.bulkPut(Object.values(snap.sets).flat());
+			// H14: Mark everything as _synced: false so it gets pushed again
+			const meta = syncMeta();
+			await db.workouts.put({ ...snap.workout, ...meta });
+			await db.workoutExercises.bulkPut(snap.workoutExercises.map((we) => ({ ...we, ...meta })));
+			await db.sets.bulkPut(Object.values(snap.sets).flat().map((s) => ({ ...s, ...meta })));
 			schedulePush();
 
 			// Restore state

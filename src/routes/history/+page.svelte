@@ -2,15 +2,19 @@
 	import { db } from '$lib/db/schema';
 	import type { Workout } from '$lib/db/schema';
 	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 
 	let workouts: Workout[] = $state([]);
 
-	onMount(async () => {
-		// Bug 8 fix: only show finished workouts in history
+	async function loadWorkouts() {
 		workouts = await db.workouts.orderBy('date').reverse()
 			.filter((w) => !!w.finishedAt)
 			.toArray();
-	});
+	}
+
+	onMount(loadWorkouts);
+	// H18: refresh list when navigating back to this page (e.g. after deleting a workout)
+	afterNavigate(loadWorkouts);
 
 	function formatDate(d: Date) {
 		return new Date(d).toLocaleDateString('en-GB', {

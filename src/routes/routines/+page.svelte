@@ -36,11 +36,15 @@
 			goto('/workout/active');
 			return;
 		}
-		const workout = await activeWorkout.start(routineName);
 		const routineExercises = await db.routineExercises
 			.where('routineId')
 			.equals(routineId)
 			.sortBy('order');
+
+		// M4: guard empty routines — don't start a workout with no exercises
+		if (!routineExercises.length) return;
+
+		await activeWorkout.start(routineName);
 
 		for (const re of routineExercises) {
 			const we = await activeWorkout.addExercise(re.exerciseId);

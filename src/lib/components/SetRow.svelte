@@ -15,6 +15,8 @@
 		onDelete: () => void;
 		// Parent registers a getValues fn to read current inputs on finish
 		onRegister?: (getValues: () => ResolvedValues | null) => void;
+		// S10: parent unregisters when set is destroyed
+		onUnregister?: () => void;
 	}
 
 	export interface ResolvedValues {
@@ -36,7 +38,8 @@
 		onComplete,
 		onChange,
 		onDelete,
-		onRegister
+		onRegister,
+		onUnregister
 	}: Props = $props();
 
 	let weight = $state('');
@@ -57,8 +60,10 @@
 	});
 
 	// Register getValues with parent so finish() can collect all inputs
+	// S10/H17: return cleanup fn so parent can unregister when component is destroyed
 	$effect(() => {
 		onRegister?.(() => getResolvedValues());
+		return () => onUnregister?.();
 	});
 
 	/**

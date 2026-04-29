@@ -9,7 +9,7 @@
 	let error = $state<string | null>(null);
 
 	async function sendOtp() {
-		if (!email.trim()) return;
+		if (!email.trim() || loading) return; // H15: guard double-submit
 		loading = true;
 		error = null;
 		const { error: err } = await supabase.auth.signInWithOtp({
@@ -25,7 +25,7 @@
 	}
 
 	async function verifyOtp() {
-		if (otpCode.trim().length < 6) return;
+		if (otpCode.trim().length < 6 || loading) return; // H15: guard double-submit
 		loading = true;
 		error = null;
 		const { error: err } = await supabase.auth.verifyOtp({

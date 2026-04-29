@@ -6,21 +6,22 @@
 	import { goto } from '$app/navigation';
 
 	let workout: Workout | null = $state(null);
-	let exercises: Array<{ we: WorkoutExercise; exercise: Exercise; sets: ExerciseSet[] }> = $state([]);
+	// H1: exercise can be null if exercise was deleted — show placeholder
+	let exercises: Array<{ we: WorkoutExercise; exercise: Exercise | null; sets: ExerciseSet[] }> = $state([]);
 
 	onMount(async () => {
 		const id = $page.params.id;
 		workout = (await db.workouts.get(id)) ?? null;
-		if (!workout) return;
+		// M6: redirect to 404-like state if workout not found
+		if (!workout) { goto('/history'); return; }
 
 		const wes = await db.workoutExercises.where('workoutId').equals(id).sortBy('order');
 		const result = [];
 		for (const we of wes) {
-			const exercise = await db.exercises.get(we.exerciseId);
-			// Bug 22 fix: only show completed sets in history view
+			const exercise = (await db.exercises.get(we.exerciseId)) ?? null; // H1: null if deleted
 			const sets = (await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order'))
 				.filter((s) => s.completed);
-			if (exercise) result.push({ we, exercise, sets });
+			result.push({ we, exercise, sets }); // H1: always push even if exercise is null
 		}
 		exercises = result;
 	});
@@ -49,10 +50,16 @@
 
 	async function deleteWorkout() {
 		if (!workout) return;
+		const allSetIds: string[] = [];
+		const allWeIds: string[] = [];
 		for (const { we, sets } of exercises) {
-			await db.sets.bulkDelete(sets.map(s => s.id));
-			await db.workoutExercises.delete(we.id);
+			allSetIds.push(...sets.map((s) => s.id));
+			allWeIds.push(we.id);
 		}
+		// M5: cascade delete PRs for this workout before deleting the workout
+		await db.personalRecords.where('workoutId').equals(workout.id).delete();
+		await db.sets.bulkDelete(allSetIds);
+		await db.workoutExercises.bulkDelete(allWeIds);
 		await db.workouts.delete(workout.id);
 		goto('/history');
 	}
@@ -83,12 +90,15 @@
 	<div class="flex flex-col gap-4">
 		{#each exercises as { exercise, sets }}
 			<div class="rounded-2xl bg-zinc-900 p-4">
-				<h2 class="mb-2 font-semibold">{exercise.name}</h2>
+				<!-- H1: show placeholder name if exercise was deleted -->
+				<h2 class="mb-2 font-semibold {exercise ? '' : 'text-zinc-500 italic'}">
+					{exercise?.name ?? 'Deleted exercise'}
+				</h2>
 				<div class="flex flex-col gap-1">
 					{#each sets as set, i}
 						<div class="flex justify-between text-sm">
 							<span class="text-zinc-500">Set {i + 1}</span>
-							<span class="font-medium">{formatSet(set, exercise.type)}</span>
+							<span class="font-medium">{formatSet(set, exercise?.type ?? 'weightReps')}</span>
 						</div>
 					{/each}
 				</div>

@@ -35,11 +35,11 @@ export async function getLastFinishedSetsFor(exerciseId: string): Promise<LastWo
 	const we = wes.find((w) => w.workoutId === latest.id);
 	if (!we) return null;
 
-	// Get its sets
-	const sets = await db.sets
+	// Get its sets — H7: only completed sets (uncompleted sets are not "done" data)
+	const sets = (await db.sets
 		.where('workoutExerciseId')
 		.equals(we.id)
-		.sortBy('order');
+		.sortBy('order')).filter((s) => s.completed);
 
 	return { sets, date: new Date(latest.finishedAt!), workoutName: latest.name };
 }

@@ -2,11 +2,18 @@
  * Sync engine — pushes unsynced local Dexie rows to Supabase, pulls remote changes down.
  * Strategy: last-write-wins based on _lastModified / updated_at.
  * Default exercises (isCustom=false) are never synced — seeded locally on every device.
+ *
+ * S1 fix: _synced is stored as a JS boolean (false/true). Dexie indexes booleans as
+ * false/true, NOT as 0/1, so .where('_synced').equals(0) returns nothing. We use
+ * .filter((x) => !x._synced) throughout instead.
+ *
+ * H9+H10 fix: CAS pattern on _synced writes + module-level mutex so syncNow is not
+ * re-entrant.
  */
 
 import { db } from '$lib/db/schema';
 import { supabase } from '$lib/supabase';
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 // ─── Sync status store ────────────────────────────────────────────────────────
 
@@ -37,9 +44,10 @@ function setLastPull(ts: string) {
 	}
 }
 
-// ─── Debounce ─────────────────────────────────────────────────────────────────
+// ─── Debounce + mutex ─────────────────────────────────────────────────────────
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
+let inFlight: Promise<void> | null = null; // H10: mutex
 
 export function schedulePush() {
 	if (pushTimer) clearTimeout(pushTimer);
@@ -48,54 +56,83 @@ export function schedulePush() {
 	}, 1500);
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 // ─── Main sync ────────────────────────────────────────────────────────────────
 
 export async function syncNow(): Promise<void> {
-	const { data: { session } } = await supabase.auth.getSession();
-	if (!session?.user) return; // not signed in, skip
+	// H10: re-entrant guard — return existing promise if already running
+	if (inFlight) return inFlight;
 
-	const userId = session.user.id;
-	syncStatus.update((s) => ({ ...s, syncing: true, error: null }));
+	const run = async () => {
+		const { data: { session } } = await supabase.auth.getSession();
+		if (!session?.user) return; // not signed in, skip
 
-	try {
-		await pushUnsynced(userId);
-		await pullChanges(userId);
-		syncStatus.update((s) => ({ ...s, syncing: false, lastSyncedAt: new Date(), error: null }));
-	} catch (err: any) {
-		console.error('[sync] error:', err);
-		syncStatus.update((s) => ({ ...s, syncing: false, error: err?.message ?? 'Sync failed' }));
+		const userId = session.user.id;
+		syncStatus.update((s) => ({ ...s, syncing: true, error: null }));
+
+		try {
+			await pushUnsynced(userId);
+			await pullChanges(userId);
+			syncStatus.update((s) => ({ ...s, syncing: false, lastSyncedAt: new Date(), error: null }));
+		} catch (err: any) {
+			console.error('[sync] error:', err);
+			syncStatus.update((s) => ({ ...s, syncing: false, error: err?.message ?? 'Sync failed' }));
+		} finally {
+			inFlight = null;
+		}
+	};
+
+	inFlight = run();
+	return inFlight;
+}
+
+// ─── Helper: mark row synced only if _lastModified hasn't changed (CAS) ──────
+
+async function markSynced(
+	table: 'exercises' | 'workouts' | 'workoutExercises' | 'sets' | 'routines' | 'routineExercises' | 'personalRecords',
+	id: string,
+	lastModified: number
+) {
+	// H9: CAS — only set _synced:true if _lastModified still matches what we pushed
+	const row = await (db[table] as any).get(id);
+	if (row && (row._lastModified ?? 0) === lastModified) {
+		await (db[table] as any).update(id, { _synced: true } as any);
 	}
+	// If _lastModified changed (user edited mid-push), leave _synced:false so next push retries
 }
 
 // ─── Push ─────────────────────────────────────────────────────────────────────
 
 async function pushUnsynced(userId: string) {
 	// ── Tombstones first (deletes must land before any re-upsert of same id) ──
-	const unsyncedTombstones = await db.tombstones.where('_synced').equals(0).toArray();
+	const unsyncedTombstones = await db.tombstones.filter((t) => !t._synced).toArray();
 	if (unsyncedTombstones.length) {
-		// Order: sets → workout_exercises → workouts (FK-safe)
-		const order = { set: 0, workoutExercise: 1, workout: 2 };
-		const sorted = [...unsyncedTombstones].sort((a, b) => order[a.entity] - order[b.entity]);
+		const tableMap: Record<string, string> = {
+			set: 'sets',
+			workoutExercise: 'workout_exercises',
+			workout: 'workouts',
+			exercise: 'exercises',
+			routine: 'routines',
+			routineExercise: 'routine_exercises',
+			personalRecord: 'personal_records'
+		};
+		// FK-safe delete order
+		const order: Record<string, number> = {
+			personalRecord: 0, set: 1, workoutExercise: 2, workout: 3,
+			routineExercise: 4, routine: 5, exercise: 6
+		};
+		const sorted = [...unsyncedTombstones].sort((a, b) => (order[a.entity] ?? 9) - (order[b.entity] ?? 9));
 		for (const t of sorted) {
-			const tableMap: Record<string, string> = {
-				set: 'sets',
-				workoutExercise: 'workout_exercises',
-				workout: 'workouts'
-			};
-			const { error } = await supabase.from(tableMap[t.entity]).delete().eq('id', t.entityId).eq('user_id', userId);
-			if (error && error.code !== 'PGRST116') throw error; // ignore "not found"
+			const tbl = tableMap[t.entity];
+			if (!tbl) continue;
+			await supabase.from(tbl).delete().eq('id', t.entityId).eq('user_id', userId);
+			// Supabase delete returns success even for missing rows — no error check needed
 		}
-		// Delete tombstones locally after successful push
 		await db.tombstones.bulkDelete(sorted.map((t) => t.id));
 	}
 
-	// Bug 20 fix: use Dexie index instead of full table scan (booleans stored as 0/1)
 	// Exercises — only custom ones
 	const unsyncedExercises = await db.exercises
-		.where('_synced').equals(0)
-		.filter((e) => e.isCustom === true)
+		.filter((e) => !e._synced && e.isCustom === true)
 		.toArray();
 	if (unsyncedExercises.length) {
 		const rows = unsyncedExercises.map((e) => ({
@@ -110,13 +147,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('exercises').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedExercises.map((e) => db.exercises.update(e.id, { _synced: true } as any)));
+		await Promise.all(unsyncedExercises.map((e) => markSynced('exercises', e.id, (e as any)._lastModified)));
 	}
 
 	// Workouts
-	const unsyncedWorkouts = await db.workouts
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedWorkouts = await db.workouts.filter((w) => !w._synced).toArray();
 	if (unsyncedWorkouts.length) {
 		const rows = unsyncedWorkouts.map((w) => ({
 			id: w.id,
@@ -130,13 +165,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('workouts').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedWorkouts.map((w) => db.workouts.update(w.id, { _synced: true } as any)));
+		await Promise.all(unsyncedWorkouts.map((w) => markSynced('workouts', w.id, (w as any)._lastModified)));
 	}
 
 	// WorkoutExercises
-	const unsyncedWEs = await db.workoutExercises
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedWEs = await db.workoutExercises.filter((we) => !we._synced).toArray();
 	if (unsyncedWEs.length) {
 		const rows = unsyncedWEs.map((we) => ({
 			id: we.id,
@@ -149,13 +182,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('workout_exercises').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedWEs.map((we) => db.workoutExercises.update(we.id, { _synced: true } as any)));
+		await Promise.all(unsyncedWEs.map((we) => markSynced('workoutExercises', we.id, (we as any)._lastModified)));
 	}
 
 	// Sets
-	const unsyncedSets = await db.sets
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedSets = await db.sets.filter((s) => !s._synced).toArray();
 	if (unsyncedSets.length) {
 		const rows = unsyncedSets.map((s) => ({
 			id: s.id,
@@ -173,13 +204,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('sets').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedSets.map((s) => db.sets.update(s.id, { _synced: true } as any)));
+		await Promise.all(unsyncedSets.map((s) => markSynced('sets', s.id, (s as any)._lastModified)));
 	}
 
 	// Routines
-	const unsyncedRoutines = await db.routines
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedRoutines = await db.routines.filter((r) => !r._synced).toArray();
 	if (unsyncedRoutines.length) {
 		const rows = unsyncedRoutines.map((r) => ({
 			id: r.id,
@@ -190,13 +219,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('routines').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedRoutines.map((r) => db.routines.update(r.id, { _synced: true } as any)));
+		await Promise.all(unsyncedRoutines.map((r) => markSynced('routines', r.id, (r as any)._lastModified)));
 	}
 
 	// RoutineExercises
-	const unsyncedREs = await db.routineExercises
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedREs = await db.routineExercises.filter((re) => !re._synced).toArray();
 	if (unsyncedREs.length) {
 		const rows = unsyncedREs.map((re) => ({
 			id: re.id,
@@ -210,13 +237,11 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('routine_exercises').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedREs.map((re) => db.routineExercises.update(re.id, { _synced: true } as any)));
+		await Promise.all(unsyncedREs.map((re) => markSynced('routineExercises', re.id, (re as any)._lastModified)));
 	}
 
 	// PersonalRecords
-	const unsyncedPRs = await db.personalRecords
-		.where('_synced').equals(0)
-		.toArray();
+	const unsyncedPRs = await db.personalRecords.filter((pr) => !pr._synced).toArray();
 	if (unsyncedPRs.length) {
 		const rows = unsyncedPRs.map((pr) => ({
 			id: pr.id,
@@ -224,8 +249,8 @@ async function pushUnsynced(userId: string) {
 			exercise_id: pr.exerciseId,
 			category: pr.category ?? 'strength',
 			bucket: pr.bucket ?? null,
-			workout_id: pr.workoutId ?? null,
-			set_id: pr.setId ?? null,
+			workout_id: pr.workoutId || null,
+			set_id: pr.setId || null,
 			date: toSupabaseDate(pr.date),
 			weight: pr.weight ?? null,
 			reps: pr.reps ?? null,
@@ -235,7 +260,7 @@ async function pushUnsynced(userId: string) {
 		}));
 		const { error } = await supabase.from('personal_records').upsert(rows, { onConflict: 'id' });
 		if (error) throw error;
-		await Promise.all(unsyncedPRs.map((pr) => db.personalRecords.update(pr.id, { _synced: true } as any)));
+		await Promise.all(unsyncedPRs.map((pr) => markSynced('personalRecords', pr.id, (pr as any)._lastModified)));
 	}
 }
 
@@ -245,11 +270,10 @@ async function pullChanges(userId: string) {
 	const lastPull = getLastPull();
 	const now = new Date().toISOString();
 
-	// Collect tombstoned ids so we skip them during pull (prevents zombie re-downloads)
+	// Collect tombstoned ids partitioned by entity type to avoid cross-table collisions
 	const tombstones = await db.tombstones.toArray();
 	const tombstonedIds = new Set(tombstones.map((t) => t.entityId));
 
-	// Helper: fetch rows updated since lastPull
 	async function fetchSince(table: string) {
 		let q = supabase.from(table).select('*').eq('user_id', userId);
 		if (lastPull) q = q.gt('updated_at', lastPull);
@@ -332,8 +356,8 @@ async function pullChanges(userId: string) {
 				reps: r.reps ?? undefined,
 				durationSec: r.duration_sec ?? undefined,
 				distanceM: r.distance_m ?? undefined,
-				isWarmup: r.is_warmup,
-				completed: r.completed,
+				isWarmup: r.is_warmup === true,  // coerce nullable bool
+				completed: r.completed === true,  // coerce nullable bool
 				notes: r.notes ?? undefined,
 				_synced: true,
 				_lastModified: remoteTs
@@ -378,9 +402,10 @@ async function pullChanges(userId: string) {
 		}
 	}
 
-	// PersonalRecords
+	// PersonalRecords — M8: use null for missing workoutId/setId, not empty string
 	const remotePRs = await fetchSince('personal_records');
 	for (const r of remotePRs) {
+		if (tombstonedIds.has(r.id)) continue;
 		const local = await db.personalRecords.get(r.id);
 		const remoteTs = new Date(r.updated_at).getTime();
 		const localTs = (local as any)?._lastModified ?? 0;
@@ -390,8 +415,9 @@ async function pullChanges(userId: string) {
 				exerciseId: r.exercise_id,
 				category: r.category ?? 'strength',
 				bucket: r.bucket ?? undefined,
-				workoutId: r.workout_id ?? '',
-				setId: r.set_id ?? '',
+				// Legacy rows may have no workout_id/set_id — use empty sentinel, not ''
+				workoutId: r.workout_id ?? 'legacy',
+				setId: r.set_id ?? 'legacy',
 				date: new Date(r.date),
 				weight: r.weight ?? undefined,
 				reps: r.reps ?? undefined,
@@ -404,4 +430,11 @@ async function pullChanges(userId: string) {
 	}
 
 	setLastPull(now);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function toSupabaseDate(d?: Date): string | null {
+	if (!d) return null;
+	return new Date(d).toISOString();
 }

@@ -105,7 +105,8 @@ export interface PersonalRecord {
 
 export interface Tombstone {
 	id: string; // same as the deleted entity's id
-	entity: 'workout' | 'workoutExercise' | 'set';
+	// S6/H11: all entity types that can be hard-deleted and need remote cleanup
+	entity: 'workout' | 'workoutExercise' | 'set' | 'exercise' | 'routine' | 'routineExercise' | 'personalRecord';
 	entityId: string;
 	deletedAt: Date;
 	_synced: boolean;
@@ -188,8 +189,8 @@ export class IronLogDB extends Dexie {
 			.upgrade(async (tx) => {
 				// Wipe old-format PRs — recomputeAllPRs() runs on next app load
 				await tx.table('personalRecords').clear();
-				// Guard flag so recompute only runs once
-				localStorage.removeItem('prRecomputeV4Done');
+				// S7: localStorage must NOT be called inside the IDB upgrade transaction.
+				// The guard is removed in +layout.svelte's onMount AFTER the DB opens.
 			});
 	}
 }
