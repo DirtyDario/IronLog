@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { db } from '$lib/db/schema';
-	import type { Workout, WorkoutExercise, ExerciseSet, Exercise } from '$lib/db/schema';
+	import type { Workout, WorkoutExercise, ExerciseSet, Exercise, PersonalRecord } from '$lib/db/schema';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { epley } from '$lib/services/pr';
+	import { epley, getPRsForWorkout } from '$lib/services/pr';
+	import confetti from 'canvas-confetti';
 
 	interface ExerciseSummary {
 		exercise: Exercise;
@@ -12,7 +13,8 @@
 		totalVolume: number;
 		bestSet: ExerciseSet | null;
 		bestOneRM: number | null;
-		isNewPR: boolean;
+		prSetIds: Set<string>; // set ids that are PRs in this workout
+		prBuckets: string[];   // labels like '5RM', 'duration' for this exercise
 	}
 
 	let workout: Workout | null = $state(null);
@@ -20,19 +22,29 @@
 	let totalVolume = $state(0);
 	let totalSets = $state(0);
 	let totalReps = $state(0);
+	let workoutPRs: PersonalRecord[] = $state([]);
+	let exerciseNameMap: Record<string, string> = $state({});
 
 	onMount(async () => {
-		// Bug 5 fix: capture workoutId before any async, guard undefined
 		const id = $page.params.id;
 		workout = (await db.workouts.get(id)) ?? null;
 		if (!workout) { goto('/history'); return; }
-		const workoutStart = new Date(workout.date).getTime();
-		const workoutEnd = workout.finishedAt ? new Date(workout.finishedAt).getTime() : Date.now();
 
 		const wes = await db.workoutExercises.where('workoutId').equals(id).sortBy('order');
 		const result: ExerciseSummary[] = [];
 
-		// Bug 7 fix: use local accumulators, assign $state once after loop
+		// Load PRs for this workout
+		const prs = await getPRsForWorkout(id);
+		workoutPRs = prs;
+
+		// Build setId → PR mapping
+		const prBySetId = new Map<string, PersonalRecord[]>();
+		for (const pr of prs) {
+			const list = prBySetId.get(pr.setId) ?? [];
+			list.push(pr);
+			prBySetId.set(pr.setId, list);
+		}
+
 		let volTotal = 0, setsTotal = 0, repsTotal = 0;
 
 		for (const we of wes) {
@@ -41,10 +53,8 @@
 			const sets = await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order');
 			const completedSets = sets.filter((s) => s.completed);
 
-			// Volume
 			const vol = completedSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 
-			// Best set by estimated 1RM
 			let bestSet: ExerciseSet | null = null;
 			let bestOneRM: number | null = null;
 			for (const s of completedSets) {
@@ -57,26 +67,44 @@
 				}
 			}
 
-			// Bug 6 fix: only flag as new PR if the PR was recorded during THIS workout's time window
-			const allPRs = await db.personalRecords.where('exerciseId').equals(exercise.id).sortBy('date');
-			const recentPR = allPRs[allPRs.length - 1];
-			const isNewPR = recentPR
-				? new Date(recentPR.date).getTime() >= workoutStart &&
-				  new Date(recentPR.date).getTime() <= workoutEnd
-				: false;
+			// Which sets are PRs?
+			const prSetIds = new Set<string>();
+			const prBuckets: string[] = [];
+			for (const s of completedSets) {
+				const sePRs = prBySetId.get(s.id) ?? [];
+				if (sePRs.length) {
+					prSetIds.add(s.id);
+					for (const pr of sePRs) {
+						const label = pr.category === 'strength' ? (pr.bucket ?? 'PR') : pr.category;
+						if (!prBuckets.includes(label)) prBuckets.push(label);
+					}
+				}
+			}
 
 			volTotal += vol;
 			setsTotal += completedSets.length;
 			repsTotal += completedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0);
 
-			result.push({ exercise, sets: completedSets, totalVolume: vol, bestSet, bestOneRM, isNewPR });
+			exerciseNameMap[exercise.id] = exercise.name;
+			result.push({ exercise, sets: completedSets, totalVolume: vol, bestSet, bestOneRM, prSetIds, prBuckets });
 		}
 
-		// Assign accumulators to $state once (avoids += on $state causing double-count on remount)
 		totalVolume = volTotal;
 		totalSets = setsTotal;
 		totalReps = repsTotal;
 		summaries = result;
+
+		// Fire confetti if any PRs were hit
+		if (prs.length > 0) {
+			setTimeout(() => {
+				confetti({
+					particleCount: 120,
+					spread: 80,
+					origin: { y: 0.5 },
+					colors: ['#fbbf24', '#f97316', '#ffffff', '#fde68a']
+				});
+			}, 300);
+		}
 	});
 
 	function formatDuration(sec?: number) {
@@ -100,15 +128,33 @@
 		if (type === 'distance') return `${set.distanceM ? (set.distanceM / 1000).toFixed(2) : '—'} km`;
 		return '';
 	}
+
+	function formatVolSummary(kg: number) {
+		if (kg >= 1000) return `${(kg / 1000).toFixed(2).replace(/\.?0+$/, '')}t`;
+		return `${kg} kg`;
+	}
+
+	function prLabel(pr: PersonalRecord): string {
+		if (pr.category === 'strength') {
+			return `${pr.bucket} · ${pr.weight} kg × ${pr.reps}`;
+		} else if (pr.category === 'duration') {
+			return `Best duration · ${pr.durationSec}s`;
+		} else {
+			return `Best distance · ${pr.distanceM ? (pr.distanceM / 1000).toFixed(2) : '—'} km`;
+		}
+	}
 </script>
 
 <div class="flex flex-col gap-5 p-4 pt-12 pb-8">
 	<!-- Header -->
 	<div class="text-center">
-		<div class="text-5xl mb-3">🏆</div>
+		<div class="text-5xl mb-3">🏋️</div>
 		<h1 class="text-2xl font-bold">Workout Complete!</h1>
 		{#if workout}
 			<p class="mt-1 text-zinc-400">{formatDate(workout.date)}</p>
+			{#if workout.name}
+				<p class="mt-0.5 text-sm font-semibold text-orange-400">{workout.name}</p>
+			{/if}
 		{/if}
 	</div>
 
@@ -123,12 +169,29 @@
 			<p class="text-xs text-zinc-500 mt-0.5">Sets</p>
 		</div>
 		<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-			<p class="text-xl font-bold text-orange-500">
-				{totalVolume >= 1000 ? `${(totalVolume / 1000).toFixed(1)}k` : totalVolume}
-			</p>
-			<p class="text-xs text-zinc-500 mt-0.5">Vol (kg)</p>
+			<p class="text-xl font-bold text-orange-500">{formatVolSummary(totalVolume)}</p>
+			<p class="text-xs text-zinc-500 mt-0.5">Volume</p>
 		</div>
 	</div>
+
+	<!-- PR Banner (if any PRs were hit) -->
+	{#if workoutPRs.length > 0}
+		<div class="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-4">
+			<p class="text-sm font-bold text-yellow-400 mb-2">
+				🏆 {workoutPRs.length} new personal record{workoutPRs.length > 1 ? 's' : ''}!
+			</p>
+			<div class="flex flex-col gap-1">
+				{#each workoutPRs as pr}
+					<div class="flex items-center gap-2 text-sm">
+						<span class="text-yellow-500 shrink-0">▲</span>
+						<span class="text-zinc-200 font-medium">{exerciseNameMap[pr.exerciseId] ?? '...'}</span>
+						<span class="text-zinc-400">·</span>
+						<span class="text-zinc-300">{prLabel(pr)}</span>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	<!-- Per-exercise summary -->
 	<div class="flex flex-col gap-3">
@@ -140,10 +203,14 @@
 						<p class="text-xs text-zinc-500 capitalize">{s.exercise.muscleGroup}</p>
 					</div>
 					<div class="flex flex-col items-end gap-1">
-						{#if s.isNewPR}
-							<span class="rounded-full bg-orange-500/20 border border-orange-500/40 px-2 py-0.5 text-xs font-semibold text-orange-400">
-								🏆 New PR
-							</span>
+						{#if s.prBuckets.length > 0}
+							<div class="flex flex-wrap gap-1 justify-end">
+								{#each s.prBuckets as bucket}
+									<span class="rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2 py-0.5 text-xs font-bold text-yellow-400">
+										🏆 {bucket}
+									</span>
+								{/each}
+							</div>
 						{/if}
 						{#if s.totalVolume > 0}
 							<span class="text-xs text-zinc-500">{s.totalVolume} kg vol</span>
@@ -154,9 +221,14 @@
 				<!-- Sets list -->
 				<div class="flex flex-col gap-1">
 					{#each s.sets as set, i}
-						<div class="flex justify-between text-sm">
-							<span class="text-zinc-500">Set {i + 1}</span>
-							<span class="font-medium">{formatSet(set, s.exercise.type)}</span>
+						<div class="flex justify-between items-center text-sm {s.prSetIds.has(set.id) ? 'text-yellow-300' : ''}">
+							<span class="text-zinc-500 flex items-center gap-1">
+								Set {i + 1}
+								{#if s.prSetIds.has(set.id)}
+									<span class="text-yellow-500 text-xs">🏆</span>
+								{/if}
+							</span>
+							<span class="font-medium {s.prSetIds.has(set.id) ? 'text-yellow-300' : ''}">{formatSet(set, s.exercise.type)}</span>
 						</div>
 					{/each}
 				</div>

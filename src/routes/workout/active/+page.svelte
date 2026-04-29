@@ -4,7 +4,6 @@
 	import { activeWorkout } from '$lib/stores/activeWorkout';
 	import { restTimer, formatTime } from '$lib/stores/restTimer';
 	import { db } from '$lib/db/schema';
-	import { checkAndSavePR } from '$lib/services/pr';
 	import { daysAgoLabel } from '$lib/services/lastWorkout';
 	import type { Exercise, ExerciseSet, WorkoutExercise } from '$lib/db/schema';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
@@ -81,12 +80,6 @@
 			: { completed: true };
 		await activeWorkout.updateSet(set.id, workoutExerciseId, changes);
 		restTimer.start($restTimer.total);
-		const exercise = exerciseMap[exerciseId];
-		if (exercise) {
-			const merged = { ...set, ...changes };
-			const isNewPR = await checkAndSavePR(exerciseId, merged, new Date());
-			if (isNewPR) activeWorkout.addPrAlert(exercise.name);
-		}
 	}
 
 	import type { ResolvedValues } from '$lib/components/SetRow.svelte';
@@ -179,20 +172,6 @@
 		return null;
 	}
 </script>
-
-<!-- PR Alert -->
-{#if $activeWorkout.prAlerts.length > 0}
-	<button
-		onclick={() => activeWorkout.clearPrAlerts()}
-		class="fixed top-4 left-0 right-0 z-50 flex justify-center px-4 border-0 bg-transparent cursor-pointer"
-		aria-label="Dismiss PR alert"
-	>
-		<div class="rounded-2xl bg-orange-500 px-6 py-3 text-center shadow-xl">
-			<p class="text-lg font-bold">🏆 New PR!</p>
-			<p class="text-sm font-medium opacity-90">{$activeWorkout.prAlerts.join(', ')}</p>
-		</div>
-	</button>
-{/if}
 
 <!-- Undo discard snackbar -->
 {#if $activeWorkout.lastDiscarded}

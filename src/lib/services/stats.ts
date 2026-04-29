@@ -122,21 +122,26 @@ export async function getAllTimeBests(): Promise<ExerciseBest[]> {
 
 		const existing = map.get(pr.exerciseId);
 		if (!existing) {
+			const orm = pr.weight && pr.reps ? Math.round(pr.weight * (1 + pr.reps / 30)) : undefined;
 			map.set(pr.exerciseId, {
 				exerciseId: pr.exerciseId,
 				exerciseName: ex.name,
 				muscleGroup: ex.muscleGroup ?? 'other',
 				bestWeight: pr.weight,
 				bestReps: pr.reps,
-				bestOneRM: pr.estimatedOneRM,
+				bestOneRM: orm,
 				bestDuration: pr.durationSec,
 				bestDistance: pr.distanceM
 			});
 		} else {
-			if (pr.estimatedOneRM && (!existing.bestOneRM || pr.estimatedOneRM > existing.bestOneRM)) {
-				existing.bestOneRM = pr.estimatedOneRM;
-				existing.bestWeight = pr.weight;
-				existing.bestReps = pr.reps;
+			// For strength: compare by weight within same bucket; use epley for display
+			if (pr.weight && pr.reps) {
+				const orm = Math.round(pr.weight * (1 + pr.reps / 30));
+				if (!existing.bestOneRM || orm > existing.bestOneRM) {
+					existing.bestOneRM = orm;
+					existing.bestWeight = pr.weight;
+					existing.bestReps = pr.reps;
+				}
 			}
 			if (pr.durationSec && (!existing.bestDuration || pr.durationSec > existing.bestDuration)) {
 				existing.bestDuration = pr.durationSec;

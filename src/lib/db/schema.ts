@@ -17,6 +17,9 @@ export type MuscleGroup =
 	| 'full body'
 	| 'other';
 
+export type PRBucket = '1RM' | '3RM' | '5RM' | '8RM' | '10RM' | '12RM' | '13+RM';
+export type PRCategory = 'strength' | 'duration' | 'distance';
+
 export interface Exercise {
 	id: string;
 	name: string;
@@ -83,15 +86,19 @@ export interface RoutineExercise {
 	_lastModified?: number;
 }
 
+/** v4 shape — bucketed, per-set PRs */
 export interface PersonalRecord {
 	id: string;
 	exerciseId: string;
+	category: PRCategory;          // 'strength' | 'duration' | 'distance'
+	bucket?: PRBucket;             // strength only: '1RM' | '3RM' | '5RM' | '8RM' | '10RM' | '12RM' | '13+RM'
+	weight?: number;               // strength: kg lifted
+	reps?: number;                 // strength: actual reps performed
+	durationSec?: number;          // duration PR
+	distanceM?: number;            // distance PR
 	date: Date;
-	weight?: number;
-	reps?: number;
-	estimatedOneRM?: number; // Epley formula
-	durationSec?: number;
-	distanceM?: number;
+	workoutId: string;
+	setId: string;
 	_synced?: boolean;
 	_lastModified?: number;
 }
@@ -165,6 +172,25 @@ export class IronLogDB extends Dexie {
 			personalRecords: 'id, exerciseId, date, _synced',
 			tombstones: 'id, entity, entityId, _synced'
 		});
+
+		// v4 — bucketed PRs: new shape with category, bucket, workoutId, setId
+		this.version(4)
+			.stores({
+				exercises: 'id, name, type, muscleGroup, isCustom, _synced',
+				workouts: 'id, date, finishedAt, _synced',
+				workoutExercises: 'id, workoutId, exerciseId, order, _synced',
+				sets: 'id, workoutExerciseId, order, _synced',
+				routines: 'id, name, createdAt, _synced',
+				routineExercises: 'id, routineId, exerciseId, order, _synced',
+				personalRecords: 'id, exerciseId, category, bucket, workoutId, setId, date, [exerciseId+category+bucket], _synced',
+				tombstones: 'id, entity, entityId, _synced'
+			})
+			.upgrade(async (tx) => {
+				// Wipe old-format PRs — recomputeAllPRs() runs on next app load
+				await tx.table('personalRecords').clear();
+				// Guard flag so recompute only runs once
+				localStorage.removeItem('prRecomputeV4Done');
+			});
 	}
 }
 

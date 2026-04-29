@@ -14,6 +14,8 @@
 		type MuscleCount,
 		type ExerciseBest
 	} from '$lib/services/stats';
+	import { getBestPerBucket, getPRsForExercise, ALL_BUCKETS, epley } from '$lib/services/pr';
+	import type { PRBucket } from '$lib/db/schema';
 	import { Bar, Doughnut, Line } from 'svelte-chartjs';
 	import {
 		Chart as ChartJS,
@@ -52,7 +54,30 @@
 	let sessionData: { date: string; value: number }[] = $state([]);
 
 	// Active section
-	let activeTab = $state<'overview' | 'frequency' | 'muscles' | 'progress' | 'bests'>('overview');
+	let activeTab = $state<'overview' | 'frequency' | 'muscles' | 'progress' | 'bests' | 'prs'>('overview');
+
+	// PR tab state
+	let prSelectedExId = $state<string | null>(null);
+	let prBests = $state<Record<PRBucket, PersonalRecord | null> | null>(null);
+	let prTimeline: PersonalRecord[] = $state([]);
+	let prExercises: Exercise[] = $state([]);  // exercises that have ≥1 PR
+	let prExerciseMap: Record<string, Exercise> = $state({});
+
+	$effect(() => {
+		if (prSelectedExId) {
+			(async () => {
+				const [bests, timeline] = await Promise.all([
+					getBestPerBucket(prSelectedExId!),
+					getPRsForExercise(prSelectedExId!)
+				]);
+				prBests = bests;
+				prTimeline = timeline.slice().reverse(); // newest first
+			})();
+		} else {
+			prBests = null;
+			prTimeline = [];
+		}
+	});
 
 	onMount(async () => {
 		const [totals, str, weekly, muscle, allBests, exs] = await Promise.all([
@@ -95,6 +120,16 @@
 			.filter((e) => exIds.has(e.id))
 			.sort((a, b) => (countsByEx[b.id] ?? 0) - (countsByEx[a.id] ?? 0) || a.name.localeCompare(b.name));
 		exercisePrCounts = countsByEx;
+
+		// PR tab: exercises that have at least one PR record
+		const allPRs = await db.personalRecords.toArray();
+		const prExIds = new Set(allPRs.map((p) => p.exerciseId));
+		const exMap: Record<string, Exercise> = {};
+		for (const e of exs) exMap[e.id] = e;
+		prExerciseMap = exMap;
+		prExercises = exs
+			.filter((e) => prExIds.has(e.id))
+			.sort((a, b) => a.name.localeCompare(b.name));
 
 		loaded = true;
 	});
@@ -232,7 +267,8 @@
 		{ id: 'frequency', label: 'Frequency' },
 		{ id: 'muscles', label: 'Muscles' },
 		{ id: 'progress', label: 'Progress' },
-		{ id: 'bests', label: 'Bests' }
+		{ id: 'bests', label: 'Bests' },
+		{ id: 'prs', label: 'PRs' }
 	] as const;
 
 	let selectedExercise = $derived(exercises.find((e) => e.id === selectedExId));
@@ -394,14 +430,12 @@
 						<Line data={progressChartData} options={progressChartOpts} />
 					</div>
 					{#if prs.length}
-						{@const best = prs.reduce((b, pr) => ((pr.estimatedOneRM ?? 0) > (b.estimatedOneRM ?? 0) ? pr : b))}
+						{@const best = prs.reduce((b, pr) => ((pr.weight ?? 0) > (b.weight ?? 0) ? pr : b))}
 						<div class="mt-4 rounded-xl bg-orange-500/10 border border-orange-500/20 p-3">
 							<p class="text-xs font-medium text-orange-400 mb-1">All-Time Best</p>
 							{#if best.weight && best.reps}
 								<p class="text-lg font-bold">{best.weight} kg × {best.reps} reps</p>
-								{#if best.estimatedOneRM}
-									<p class="text-sm text-zinc-400">~{best.estimatedOneRM} kg est. 1RM</p>
-								{/if}
+								<p class="text-sm text-zinc-400">~{epley(best.weight, best.reps)} kg est. 1RM</p>
 							{:else if best.durationSec}
 								<p class="text-lg font-bold">{best.durationSec}s</p>
 							{:else if best.distanceM}
@@ -449,6 +483,101 @@
 							{/if}
 						</div>
 					{/each}
+				</div>
+			{/if}
+		</div>
+
+	<!-- ── PRs ────────────────────────────────────────────────── -->
+	{:else if activeTab === 'prs'}
+		<div class="px-4">
+			<h2 class="mb-1 text-lg font-semibold">Personal Records</h2>
+			<p class="mb-4 text-sm text-zinc-500">Best per rep range, per exercise</p>
+
+			<select
+				bind:value={prSelectedExId}
+				class="mb-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none"
+			>
+				<option value={null}>Select an exercise...</option>
+				{#each prExercises as ex}
+					<option value={ex.id}>{ex.name}</option>
+				{/each}
+			</select>
+
+			{#if prSelectedExId && prBests}
+				<!-- Strength bucket cards -->
+				<div class="grid grid-cols-3 gap-2 mb-4 sm:grid-cols-4">
+					{#each ALL_BUCKETS as bucket}
+						{@const pr = prBests[bucket]}
+						<div class="rounded-xl {pr ? 'bg-zinc-900 border border-yellow-500/20' : 'bg-zinc-900/50 border border-zinc-800'} p-3 text-center">
+							<p class="text-xs font-bold {pr ? 'text-yellow-400' : 'text-zinc-600'} mb-1">{bucket}</p>
+							{#if pr}
+								<p class="text-sm font-bold text-white leading-tight">{pr.weight} kg</p>
+								<p class="text-xs text-zinc-400">× {pr.reps}</p>
+								<p class="text-xs text-zinc-600 mt-1">{new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+							{:else}
+								<p class="text-xs text-zinc-700 mt-2">—</p>
+							{/if}
+						</div>
+					{/each}
+				</div>
+
+				<!-- Cardio PRs if any -->
+				{@const durationPR = prTimeline.find((p) => p.category === 'duration')}
+				{@const distancePR = prTimeline.find((p) => p.category === 'distance')}
+				{#if durationPR || distancePR}
+					<div class="flex gap-2 mb-4">
+						{#if durationPR}
+							<div class="flex-1 rounded-xl bg-zinc-900 border border-yellow-500/20 p-3 text-center">
+								<p class="text-xs font-bold text-yellow-400 mb-1">Best Duration</p>
+								<p class="text-sm font-bold">{durationPR.durationSec}s</p>
+							</div>
+						{/if}
+						{#if distancePR}
+							<div class="flex-1 rounded-xl bg-zinc-900 border border-yellow-500/20 p-3 text-center">
+								<p class="text-xs font-bold text-yellow-400 mb-1">Best Distance</p>
+								<p class="text-sm font-bold">{distancePR.distanceM ? (distancePR.distanceM / 1000).toFixed(2) : '—'} km</p>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Timeline -->
+				{#if prTimeline.length > 0}
+					<h3 class="text-sm font-semibold text-zinc-400 mb-2">PR History</h3>
+					<div class="flex flex-col gap-1.5">
+						{#each prTimeline as pr}
+							<a
+								href="/history/{pr.workoutId}"
+								class="flex items-center justify-between rounded-xl bg-zinc-900 px-4 py-3 active:bg-zinc-800"
+							>
+								<div>
+									<span class="text-xs font-bold text-yellow-400 mr-2">
+										{pr.category === 'strength' ? pr.bucket : pr.category}
+									</span>
+									{#if pr.category === 'strength'}
+										<span class="text-sm font-semibold">{pr.weight} kg × {pr.reps}</span>
+									{:else if pr.category === 'duration'}
+										<span class="text-sm font-semibold">{pr.durationSec}s</span>
+									{:else}
+										<span class="text-sm font-semibold">{pr.distanceM ? (pr.distanceM / 1000).toFixed(2) : '—'} km</span>
+									{/if}
+								</div>
+								<span class="text-xs text-zinc-500">
+									{new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
+								</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+			{:else if prSelectedExId}
+				<div class="rounded-2xl border border-dashed border-zinc-800 p-6 text-center text-zinc-500">
+					<p>No PRs found for this exercise</p>
+				</div>
+			{:else if prExercises.length === 0}
+				<div class="rounded-2xl border border-dashed border-zinc-800 p-8 text-center text-zinc-500">
+					<p class="text-3xl mb-2">🏆</p>
+					<p class="font-medium">No PRs yet</p>
+					<p class="text-sm">Finish a workout to start tracking records</p>
 				</div>
 			{/if}
 		</div>

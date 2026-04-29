@@ -7,6 +7,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { syncNow } from '$lib/services/sync';
 	import { activeWorkout } from '$lib/stores/activeWorkout';
+	import { recomputeAllPRs } from '$lib/services/pr';
 	import { get } from 'svelte/store';
 
 	let { children } = $props();
@@ -14,6 +15,11 @@
 	onMount(async () => {
 		// Seed default exercises
 		await seedDefaultExercises();
+
+		// One-time v4 PR recompute (runs if migration cleared the guard)
+		if (!localStorage.getItem('prRecomputeV4Done')) {
+			recomputeAllPRs().catch(console.error);
+		}
 
 		// Bug 24 fix: never delete the currently active workout, increase cutoff to 48h
 		const activeId = get(activeWorkout).workout?.id;

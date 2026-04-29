@@ -4,13 +4,13 @@ import type { Workout, WorkoutExercise, ExerciseSet } from '$lib/db/schema';
 import { schedulePush } from '$lib/services/sync';
 import { getLastFinishedSetsFor, type LastWorkoutInfo } from '$lib/services/lastWorkout';
 import { restTimer } from '$lib/stores/restTimer';
+import { detectPRsForWorkout } from '$lib/services/pr';
 
 interface ActiveWorkoutState {
 	workout: Workout | null;
 	workoutExercises: WorkoutExercise[];
 	sets: Record<string, ExerciseSet[]>; // keyed by workoutExerciseId
 	startedAt: Date | null;
-	prAlerts: string[]; // exercise names that got a new PR this session
 	previousSets: Record<string, LastWorkoutInfo | null>; // keyed by workoutExerciseId
 	lastDiscarded: {
 		workout: Workout;
@@ -41,7 +41,6 @@ function createActiveWorkoutStore() {
 		workoutExercises: [],
 		sets: {},
 		startedAt: null,
-		prAlerts: [],
 		previousSets: {},
 		lastDiscarded: null
 	});
@@ -65,7 +64,6 @@ function createActiveWorkoutStore() {
 				workoutExercises: [],
 				sets: {},
 				startedAt: new Date(),
-				prAlerts: [],
 				previousSets: {},
 				lastDiscarded: null
 			});
@@ -170,17 +168,9 @@ function createActiveWorkoutStore() {
 			});
 		},
 
-		addPrAlert(exerciseName: string) {
-			update((s) => ({ ...s, prAlerts: [...s.prAlerts, exerciseName] }));
-		},
-
-		clearPrAlerts() {
-			update((s) => ({ ...s, prAlerts: [] }));
-		},
-
 		async finish(resolvedSets?: Array<{ id: string; weight?: number; reps?: number; durationSec?: number; distanceM?: number }>) {
 			const state = get({ subscribe });
-			if (!state.workout || !state.startedAt) return;
+			if (!state.workout || !state.startedAt) return [];
 
 			// Apply pre-resolved set values from the page (which knows placeholder values)
 			// then mark completed. Only sets included in resolvedSets (reps/value present) are completed.
@@ -199,14 +189,19 @@ function createActiveWorkoutStore() {
 				);
 			}
 
+			const workoutId = state.workout.id;
 			const durationSec = Math.round((Date.now() - state.startedAt.getTime()) / 1000);
-			await db.workouts.update(state.workout.id, { finishedAt: new Date(), durationSec, ...syncMeta() });
+			await db.workouts.update(workoutId, { finishedAt: new Date(), durationSec, ...syncMeta() });
 			schedulePush();
 
 			// Reset rest timer
 			restTimer.stop();
 
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [], previousSets: {}, lastDiscarded: null });
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null });
+
+			// Detect and save PRs now that the workout is fully persisted
+			const newPRs = await detectPRsForWorkout(workoutId);
+			return newPRs;
 		},
 
 		async renameWorkout(name: string) {
@@ -243,7 +238,7 @@ function createActiveWorkoutStore() {
 
 			// Clear UI immediately (feels instant)
 			restTimer.stop();
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, prAlerts: [], previousSets: {}, lastDiscarded: snapshot });
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: snapshot });
 
 			// Write tombstones + delete from Dexie
 			const weIds = snapshot.workoutExercises.map((we) => we.id);
@@ -296,7 +291,6 @@ function createActiveWorkoutStore() {
 				workoutExercises: snap.workoutExercises,
 				sets: snap.sets,
 				startedAt: snap.startedAt,
-				prAlerts: [],
 				previousSets: snap.previousSets,
 				lastDiscarded: null
 			});
