@@ -58,8 +58,15 @@
 	}
 
 	async function deleteRoutine(id: string) {
+		// H10: tombstone routine exercises and the routine itself
+		const routineExercises = await db.routineExercises.where('routineId').equals(id).toArray();
+		await Promise.all(routineExercises.map((re) =>
+			db.tombstones.put({ id: re.id, entity: 'routineExercise', entityId: re.id, deletedAt: new Date(), _synced: false })
+		));
+		await db.tombstones.put({ id, entity: 'routine', entityId: id, deletedAt: new Date(), _synced: false });
 		await db.routineExercises.where('routineId').equals(id).delete();
 		await db.routines.delete(id);
+		schedulePush();
 		routines = routines.filter((r) => r.id !== id);
 	}
 </script>

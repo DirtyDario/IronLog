@@ -270,16 +270,35 @@ async function pullChanges(userId: string) {
 	const lastPull = getLastPull();
 	const now = new Date().toISOString();
 
-	// Collect tombstoned ids partitioned by entity type to avoid cross-table collisions
+	// C3: Build tombstone sets PARTITIONED by entity type to avoid cross-table UUID collisions
 	const tombstones = await db.tombstones.toArray();
-	const tombstonedIds = new Set(tombstones.map((t) => t.entityId));
+	// Map from remote table name → Set of entity IDs that were locally deleted
+	const tombstonesByTable: Record<string, Set<string>> = {
+		exercises: new Set(),
+		workouts: new Set(),
+		workout_exercises: new Set(),
+		sets: new Set(),
+		routines: new Set(),
+		routine_exercises: new Set(),
+		personal_records: new Set()
+	};
+	const tableForEntity: Record<string, string> = {
+		exercise: 'exercises', workout: 'workouts', workoutExercise: 'workout_exercises',
+		set: 'sets', routine: 'routines', routineExercise: 'routine_exercises',
+		personalRecord: 'personal_records'
+	};
+	for (const t of tombstones) {
+		const tbl = tableForEntity[t.entity];
+		if (tbl) tombstonesByTable[tbl].add(t.entityId);
+	}
 
 	async function fetchSince(table: string) {
 		let q = supabase.from(table).select('*').eq('user_id', userId);
 		if (lastPull) q = q.gt('updated_at', lastPull);
 		const { data, error } = await q;
 		if (error) throw error;
-		return (data ?? []).filter((r: any) => !tombstonedIds.has(r.id));
+		// C3: filter using per-table tombstone set (not a shared flat set)
+		return (data ?? []).filter((r: any) => !tombstonesByTable[table]?.has(r.id));
 	}
 
 	// Custom exercises
@@ -402,10 +421,10 @@ async function pullChanges(userId: string) {
 		}
 	}
 
-	// PersonalRecords — M8: use null for missing workoutId/setId, not empty string
+	// PersonalRecords — M8: use 'legacy' sentinel for missing workoutId/setId
 	const remotePRs = await fetchSince('personal_records');
 	for (const r of remotePRs) {
-		if (tombstonedIds.has(r.id)) continue;
+		// fetchSince already filters tombstoned ids — no need to re-check here
 		const local = await db.personalRecords.get(r.id);
 		const remoteTs = new Date(r.updated_at).getTime();
 		const localTs = (local as any)?._lastModified ?? 0;
@@ -430,6 +449,10 @@ async function pullChanges(userId: string) {
 	}
 
 	setLastPull(now);
+
+	// C3: Clean up tombstones that have already been pushed (_synced: true) to prevent
+	// unbounded growth. Tombstones are only needed until they've been pushed to Supabase.
+	await db.tombstones.filter((t) => t._synced).delete();
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

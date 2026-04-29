@@ -98,8 +98,9 @@
 	function handleComplete() {
 		const resolved = getResolvedValues();
 		if (!resolved) return; // reps empty → don't complete
-		onChange({ ...resolved, completed: true });
-		onComplete(resolved); // passes values up for PR check + rest timer
+		// H13: Do NOT call onChange here — onComplete passes resolved values to the
+		// parent's handleSetComplete which does the single DB write (avoids double write).
+		onComplete(resolved); // parent writes completed:true + resolved values
 	}
 
 	function handleUncomplete() {

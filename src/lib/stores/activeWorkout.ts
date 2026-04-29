@@ -19,6 +19,7 @@ interface ActiveWorkoutState {
 		previousSets: Record<string, LastWorkoutInfo | null>;
 		startedAt: Date | null;
 	} | null;
+	rehydrating: boolean; // H12: true while async rehydrate() is in progress
 }
 
 function syncMeta() {
@@ -42,7 +43,8 @@ function createActiveWorkoutStore() {
 		sets: {},
 		startedAt: null,
 		previousSets: {},
-		lastDiscarded: null
+		lastDiscarded: null,
+		rehydrating: false
 	});
 
 	return {
@@ -51,27 +53,33 @@ function createActiveWorkoutStore() {
 		async rehydrate() {
 			// H12: On app load (e.g. after page refresh), restore an in-progress workout
 			// from IDB if the store is empty. Looks for the most recent unfinished workout.
-			const unfinished = await db.workouts
-				.filter((w) => !w.finishedAt)
-				.toArray();
-			if (!unfinished.length) return;
-			// Use most recently started (latest date)
-			const workout = unfinished.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-			const workoutExercises = await db.workoutExercises.where('workoutId').equals(workout.id).sortBy('order');
-			const sets: Record<string, ExerciseSet[]> = {};
-			const previousSets: Record<string, LastWorkoutInfo | null> = {};
-			for (const we of workoutExercises) {
-				sets[we.id] = await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order');
-				previousSets[we.id] = await getLastFinishedSetsFor(we.exerciseId);
+			update((s) => ({ ...s, rehydrating: true }));
+			try {
+				const unfinished = await db.workouts
+					.filter((w) => !w.finishedAt)
+					.toArray();
+				if (!unfinished.length) return;
+				// Use most recently started (latest date)
+				const workout = unfinished.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+				const workoutExercises = await db.workoutExercises.where('workoutId').equals(workout.id).sortBy('order');
+				const sets: Record<string, ExerciseSet[]> = {};
+				const previousSets: Record<string, LastWorkoutInfo | null> = {};
+				for (const we of workoutExercises) {
+					sets[we.id] = await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order');
+					previousSets[we.id] = await getLastFinishedSetsFor(we.exerciseId);
+				}
+				set({
+					workout,
+					workoutExercises,
+					sets,
+					startedAt: new Date(workout.date),
+					previousSets,
+					lastDiscarded: null,
+					rehydrating: false
+				});
+			} finally {
+				update((s) => ({ ...s, rehydrating: false }));
 			}
-			set({
-				workout,
-				workoutExercises,
-				sets,
-				startedAt: new Date(workout.date),
-				previousSets,
-				lastDiscarded: null
-			});
 		},
 
 		async start(name?: string) {
@@ -91,7 +99,8 @@ function createActiveWorkoutStore() {
 				sets: {},
 				startedAt: new Date(),
 				previousSets: {},
-				lastDiscarded: null
+				lastDiscarded: null,
+				rehydrating: false
 			});
 			return workout;
 		},
@@ -165,6 +174,7 @@ function createActiveWorkoutStore() {
 		},
 
 		async deleteSet(setId: string, workoutExerciseId: string) {
+			await writeTombstone('set', setId); // H5: tombstone so remote copy is deleted
 			await db.sets.delete(setId);
 			schedulePush();
 			update((s) => ({
@@ -177,6 +187,10 @@ function createActiveWorkoutStore() {
 		},
 
 		async deleteExercise(workoutExerciseId: string) {
+			// H6: tombstone all sets and the workoutExercise before hard-deleting
+			const setsToDelete = await db.sets.where('workoutExerciseId').equals(workoutExerciseId).toArray();
+			await Promise.all(setsToDelete.map((s) => writeTombstone('set', s.id)));
+			await writeTombstone('workoutExercise', workoutExerciseId);
 			await db.sets.where('workoutExerciseId').equals(workoutExerciseId).delete();
 			await db.workoutExercises.delete(workoutExerciseId);
 			schedulePush();
@@ -229,7 +243,7 @@ function createActiveWorkoutStore() {
 			// Reset rest timer
 			restTimer.stop();
 
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null });
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false });
 
 			return newPRs;
 		},
@@ -258,13 +272,14 @@ function createActiveWorkoutStore() {
 			if (!state.workout) return;
 
 			// Snapshot for undo BEFORE clearing state
-			const snapshot = {
+			// M8: use structuredClone to deep-clone so Svelte proxy objects don't leak into Dexie
+			const snapshot = structuredClone({
 				workout: state.workout,
 				workoutExercises: [...state.workoutExercises],
 				sets: { ...state.sets },
 				previousSets: { ...state.previousSets },
 				startedAt: state.startedAt
-			};
+			});
 
 			// Clear UI immediately (feels instant)
 			restTimer.stop();
@@ -286,12 +301,14 @@ function createActiveWorkoutStore() {
 			await db.workoutExercises.where('workoutId').equals(snapshot.workout.id).delete();
 			await db.workouts.delete(snapshot.workout.id);
 
-			schedulePush();
-
-			// Auto-clear undo after 5 seconds
+			// C4: Do NOT call schedulePush immediately — wait until the undo window closes.
+			// If sync runs before the user can tap Undo, tombstones are pushed to Supabase
+			// and restoreDiscarded can't fully recover. Delay push until after 5s undo window.
+			// Auto-clear undo after 5 seconds, THEN schedule push
 			setTimeout(() => {
 				update((s) => {
 					if (s.lastDiscarded?.workout.id === snapshot.workout.id) {
+						schedulePush(); // user didn't undo — safe to push deletes now
 						return { ...s, lastDiscarded: null };
 					}
 					return s;

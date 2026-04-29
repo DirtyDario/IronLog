@@ -137,7 +137,10 @@
 
 	function prLabel(pr: PersonalRecord): string {
 		if (pr.category === 'strength') {
-			return `${pr.bucket} · ${pr.weight} kg × ${pr.reps}`;
+			// M3: bodyweight PRs have no weight field
+			return pr.weight != null
+				? `${pr.bucket} · ${pr.weight} kg × ${pr.reps}`
+				: `${pr.bucket} · ${pr.reps} reps`;
 		} else if (pr.category === 'duration') {
 			return `Best duration · ${pr.durationSec}s`;
 		} else {
@@ -255,11 +258,13 @@
 		>
 			Done
 		</button>
+		{#if workout}
 		<a
-			href="/history/{workout?.id}"
+			href="/history/{workout.id}"
 			class="block w-full rounded-2xl border border-zinc-800 py-3 text-center text-sm font-medium text-zinc-400 active:bg-zinc-900"
 		>
 			View Full History Entry
 		</a>
+		{/if}
 	</div>
 </div>

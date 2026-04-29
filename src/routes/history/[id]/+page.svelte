@@ -4,6 +4,7 @@
 	import type { Workout, WorkoutExercise, ExerciseSet, Exercise } from '$lib/db/schema';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { schedulePush } from '$lib/services/sync';
 
 	let workout: Workout | null = $state(null);
 	// H1: exercise can be null if exercise was deleted — show placeholder
@@ -50,17 +51,21 @@
 
 	async function deleteWorkout() {
 		if (!workout) return;
-		const allSetIds: string[] = [];
-		const allWeIds: string[] = [];
-		for (const { we, sets } of exercises) {
-			allSetIds.push(...sets.map((s) => s.id));
-			allWeIds.push(we.id);
+		// H7: get ALL sets (not just completed) so nothing leaks
+		// H8: write tombstones so remote copies are deleted on next sync
+		for (const { we } of exercises) {
+			const allSets = await db.sets.where('workoutExerciseId').equals(we.id).toArray();
+			await Promise.all(allSets.map((s) => db.tombstones.put({
+				id: s.id, entity: 'set', entityId: s.id, deletedAt: new Date(), _synced: false
+			})));
+			await db.tombstones.put({ id: we.id, entity: 'workoutExercise', entityId: we.id, deletedAt: new Date(), _synced: false });
+			await db.sets.bulkDelete(allSets.map((s) => s.id));
+			await db.workoutExercises.delete(we.id);
 		}
-		// M5: cascade delete PRs for this workout before deleting the workout
 		await db.personalRecords.where('workoutId').equals(workout.id).delete();
-		await db.sets.bulkDelete(allSetIds);
-		await db.workoutExercises.bulkDelete(allWeIds);
+		await db.tombstones.put({ id: workout.id, entity: 'workout', entityId: workout.id, deletedAt: new Date(), _synced: false });
 		await db.workouts.delete(workout.id);
+		schedulePush();
 		goto('/history');
 	}
 

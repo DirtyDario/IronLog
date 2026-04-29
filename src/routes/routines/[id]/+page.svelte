@@ -3,6 +3,7 @@
 	import { db } from '$lib/db/schema';
 	import type { Routine, RoutineExercise, Exercise } from '$lib/db/schema';
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import ExercisePicker from '$lib/components/ExercisePicker.svelte';
 	import { schedulePush } from '$lib/services/sync';
 	import { dragHandleZone, dragHandle, type DndEvent } from 'svelte-dnd-action';
@@ -34,6 +35,8 @@
 	onMount(async () => {
 		const id = $page.params.id;
 		routine = (await db.routines.get(id)) ?? null;
+		// M7: redirect if routine not found
+		if (!routine) { goto('/routines'); return; }
 		await loadItems();
 	});
 

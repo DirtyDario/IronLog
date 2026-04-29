@@ -29,8 +29,17 @@
 	// Bug 25 fix: tick every second for elapsed time display
 	let now = $state(Date.now());
 	onMount(() => {
-		// Bug 4 fix: check redirect in onMount (synchronous, no setTimeout race)
-		if (!$activeWorkout.workout) {
+		// H12: Wait for rehydrate() to complete before deciding to redirect.
+		// rehydrate() runs async in layout; if we redirect immediately we may kick
+		// the user to '/' while their workout is still being loaded from IDB.
+		if ($activeWorkout.rehydrating) {
+			const unsub = activeWorkout.subscribe((state) => {
+				if (!state.rehydrating) {
+					unsub();
+					if (!state.workout) goto('/');
+				}
+			});
+		} else if (!$activeWorkout.workout) {
 			goto('/');
 			return;
 		}
@@ -182,18 +191,7 @@
 	}
 </script>
 
-<!-- Undo discard snackbar -->
-{#if $activeWorkout.lastDiscarded}
-	<div class="fixed bottom-24 left-4 right-4 z-50 flex items-center justify-between rounded-2xl bg-zinc-800 px-4 py-3 shadow-xl">
-		<p class="text-sm font-medium text-zinc-200">Workout discarded</p>
-		<button
-			onclick={async () => { await activeWorkout.restoreDiscarded(); goto('/workout/active'); }}
-			class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-bold text-white active:bg-orange-600"
-		>
-			Undo
-		</button>
-	</div>
-{/if}
+<!-- NOTE: "Undo discard" snackbar is in +page.svelte (home) because discard navigates there -->
 
 <div class="flex flex-col gap-4 p-4 pt-4 pb-40">
 	<!-- Header -->

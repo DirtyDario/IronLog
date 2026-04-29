@@ -45,7 +45,10 @@
 	}
 
 	async function deleteExercise(id: string) {
+		// H9: tombstone so remote copy is cleaned up on next sync
+		await db.tombstones.put({ id, entity: 'exercise', entityId: id, deletedAt: new Date(), _synced: false });
 		await db.exercises.delete(id);
+		schedulePush();
 		exercises = exercises.filter((e) => e.id !== id);
 	}
 </script>

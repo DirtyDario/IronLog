@@ -4,7 +4,6 @@
 	import { db } from '$lib/db/schema';
 	import { onMount } from 'svelte';
 	import type { Workout } from '$lib/db/schema';
-
 	let recentWorkouts: Workout[] = $state([]);
 	let showDiscardConfirm = $state(false);
 
@@ -37,6 +36,19 @@
 		return `${m}m`;
 	}
 </script>
+
+<!-- M6: Undo discard snackbar lives here (home page) because discard() does goto('/') -->
+{#if $activeWorkout.lastDiscarded}
+	<div class="fixed bottom-24 left-4 right-4 z-50 flex items-center justify-between rounded-2xl bg-zinc-800 px-4 py-3 shadow-xl">
+		<p class="text-sm font-medium text-zinc-200">Workout discarded</p>
+		<button
+			onclick={async () => { await activeWorkout.restoreDiscarded(); goto('/workout/active'); }}
+			class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-bold text-white active:bg-orange-600"
+		>
+			Undo
+		</button>
+	</div>
+{/if}
 
 <div class="flex flex-col gap-6 p-5 pt-4">
 	<!-- Header -->

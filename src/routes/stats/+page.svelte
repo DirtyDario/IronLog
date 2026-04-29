@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { db } from '$lib/db/schema';
 	import type { Exercise, PersonalRecord } from '$lib/db/schema';
 	import {
@@ -137,22 +138,21 @@
 		loaded = true;
 	});
 
+	// M1: cancellation counter — incremented each time selectedExId changes
+	let progressLoadSeq = $state(0);
+
 	$effect(() => {
 		if (selectedExId) {
 			sessionData = [];
 			prs = [];
-			// M16: cancellation token — if selectedExId changes before async completes, discard
-			const token = Symbol();
-			let currentToken = token;
-			// Load max weight (or reps/duration/distance) per finished workout session for progress chart
+			// M1: capture current seq at start of this async run
+			const seq = ++progressLoadSeq;
 			(async () => {
-				// Also still load PRs for the "All-Time Best" badge
 				const prData = await db.personalRecords
 					.where('exerciseId').equals(selectedExId).sortBy('date');
-				if (currentToken !== token) return; // M16: stale, discard
+				if (progressLoadSeq !== seq) return; // stale — discard
 				prs = prData;
 
-				// Build per-session max values from actual sets
 				const wes = await db.workoutExercises.where('exerciseId').equals(selectedExId).toArray();
 				const workoutIds = [...new Set(wes.map((w) => w.workoutId))];
 				const workouts = await db.workouts
@@ -161,7 +161,6 @@
 					.toArray();
 				workouts.sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
 
-				// H2: detect exercise type from first exercise record
 				const exRecord = await db.exercises.get(selectedExId);
 				const exType = exRecord?.type ?? 'weightReps';
 
@@ -170,7 +169,6 @@
 					const we = wes.find((w) => w.workoutId === workout.id);
 					if (!we) continue;
 
-					// H2: query by appropriate field based on exercise type
 					let maxVal = 0;
 					if (exType === 'weightReps') {
 						const sets = await db.sets
@@ -206,11 +204,9 @@
 						value: maxVal
 					});
 				}
-				if (currentToken !== token) return; // M16: stale
+				if (progressLoadSeq !== seq) return; // stale
 				sessionData = sessionPoints;
 			})();
-
-			// M16: expose cancel fn via closure — no-op since token is local, but pattern is clear
 		}
 	});
 
@@ -481,8 +477,13 @@
 					<div class="h-48">
 						<Line data={progressChartData} options={progressChartOpts} />
 					</div>
-					{#if prs.length}
-						{@const best = prs.reduce((b, pr) => ((pr.weight ?? 0) > (b.weight ?? 0) ? pr : b))}
+			{#if prs.length}
+					{@const best = prs.reduce((b, pr) => {
+						// M2: compare using the right field per category, not always weight
+						const bVal = b.weight ?? b.reps ?? b.durationSec ?? b.distanceM ?? 0;
+						const pVal = pr.weight ?? pr.reps ?? pr.durationSec ?? pr.distanceM ?? 0;
+						return pVal > bVal ? pr : b;
+					})}
 						<div class="mt-4 rounded-xl bg-orange-500/10 border border-orange-500/20 p-3">
 							<p class="text-xs font-medium text-orange-400 mb-1">All-Time Best</p>
 							{#if best.weight && best.reps}
@@ -603,33 +604,38 @@
 				{/if}
 
 				<!-- Timeline -->
-				{#if prTimeline.length > 0}
-					<h3 class="text-sm font-semibold text-zinc-400 mb-2">PR History</h3>
-					<div class="flex flex-col gap-1.5">
-						{#each prTimeline as pr}
-							<a
-								href="/history/{pr.workoutId}"
-								class="flex items-center justify-between rounded-xl bg-zinc-900 px-4 py-3 active:bg-zinc-800"
-							>
-								<div>
-									<span class="text-xs font-bold text-yellow-400 mr-2">
-										{pr.category === 'strength' ? pr.bucket : pr.category}
-									</span>
-									{#if pr.category === 'strength'}
-										<span class="text-sm font-semibold">{pr.weight} kg × {pr.reps}</span>
-									{:else if pr.category === 'duration'}
-										<span class="text-sm font-semibold">{pr.durationSec}s</span>
-									{:else}
-										<span class="text-sm font-semibold">{pr.distanceM ? (pr.distanceM / 1000).toFixed(2) : '—'} km</span>
-									{/if}
-								</div>
-								<span class="text-xs text-zinc-500">
-									{new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
+			{#if prTimeline.length > 0}
+				<h3 class="text-sm font-semibold text-zinc-400 mb-2">PR History</h3>
+				<div class="flex flex-col gap-1.5">
+					{#each prTimeline as pr}
+						<!-- M4: only navigate if workoutId is a real ID (not null/'legacy') -->
+						{@const isLinked = !!(pr.workoutId && pr.workoutId !== 'legacy')}
+						<div
+							role={isLinked ? 'link' : undefined}
+							tabindex={isLinked ? 0 : undefined}
+							onclick={() => isLinked && goto(`/history/${pr.workoutId}`)}
+							onkeydown={(e) => e.key === 'Enter' && isLinked && goto(`/history/${pr.workoutId}`)}
+							class="flex items-center justify-between rounded-xl bg-zinc-900 px-4 py-3 {isLinked ? 'cursor-pointer active:bg-zinc-800' : ''}"
+						>
+							<div>
+								<span class="text-xs font-bold text-yellow-400 mr-2">
+									{pr.category === 'strength' ? pr.bucket : pr.category}
 								</span>
-							</a>
-						{/each}
-					</div>
-				{/if}
+								{#if pr.category === 'strength'}
+									<span class="text-sm font-semibold">{pr.weight != null ? `${pr.weight} kg × ${pr.reps}` : `${pr.reps} reps`}</span>
+								{:else if pr.category === 'duration'}
+									<span class="text-sm font-semibold">{pr.durationSec}s</span>
+								{:else}
+									<span class="text-sm font-semibold">{pr.distanceM ? (pr.distanceM / 1000).toFixed(2) : '—'} km</span>
+								{/if}
+							</div>
+							<span class="text-xs text-zinc-500">
+								{new Date(pr.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })}
+							</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
 			{:else if prSelectedExId}
 				<div class="rounded-2xl border border-dashed border-zinc-800 p-6 text-center text-zinc-500">
 					<p>No PRs found for this exercise</p>

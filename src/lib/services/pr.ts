@@ -101,11 +101,13 @@ export async function detectPRsForWorkout(workoutId: string): Promise<PersonalRe
 			for (const candidate of candidates) {
 				const key = `${candidate.exerciseId}|${candidate.category}|${candidate.bucket}`;
 
-				// Load from DB if not cached
-				if (!existingBests.has(key)) {
+				// Load from DB if not cached — C2: exclude PRs from THIS workout so we
+			// compare against historical bests only, not our own in-progress PRs
+			if (!existingBests.has(key)) {
 					const existing = await db.personalRecords
 						.where('[exerciseId+category+bucket]')
 						.equals([candidate.exerciseId, candidate.category, candidate.bucket])
+						.filter((r) => r.workoutId !== workoutId) // C2: historical only
 						.toArray();
 					const best = existing.reduce((b, r) => Math.max(b, prValue(r)), 0);
 					existingBests.set(key, best);
@@ -144,12 +146,8 @@ export async function recomputeAllPRs(): Promise<void> {
 	if (recomputeInFlight) return recomputeInFlight;
 
 	recomputeInFlight = (async () => {
-		// S4: set guard immediately — if we crash mid-run, don't re-run on every load
-		if (typeof localStorage !== 'undefined') {
-			localStorage.setItem('prRecomputeV4Done', '1');
-		}
-
-		// Clear existing PR records (S5: deterministic IDs make this idempotent on Supabase)
+		// S4: Guard is set AFTER successful completion (not at start) so a crash during
+		// recompute doesn't permanently block future attempts.
 		await db.personalRecords.clear();
 
 		const workouts = await db.workouts
@@ -193,6 +191,11 @@ export async function recomputeAllPRs(): Promise<void> {
 			// bulkPut (not bulkAdd) — deterministic IDs mean duplicates are safe overwrites
 			await db.personalRecords.bulkPut(toInsert);
 			schedulePush();
+		}
+
+		// C1: Set guard AFTER successful completion so a mid-run crash allows retry
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem('prRecomputeV4Done', '1');
 		}
 	})().finally(() => { recomputeInFlight = null; });
 

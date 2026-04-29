@@ -69,7 +69,8 @@ export async function getWeeklyFrequency(): Promise<WeekCount[]> {
 		end.setDate(end.getDate() + 7);
 
 		const count = workouts.filter((w) => {
-			const wd = new Date(w.date);
+			// H11: use finishedAt (consistent with streak) — date is start time, finishedAt is end time
+			const wd = new Date(w.finishedAt!);
 			return wd >= start && wd < end;
 		}).length;
 
