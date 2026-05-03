@@ -393,7 +393,7 @@
 										? 'bg-orange-500 text-white'
 										: 'bg-zinc-800 text-zinc-400'}"
 							>
-								{side === 'left' ? 'Links' : 'Rechts'}
+								{side === 'left' ? 'Left' : 'Right'}
 							</button>
 						{/each}
 					</div>
@@ -436,7 +436,7 @@
 					onclick={() => activeWorkout.addSet(we.id, isUnilateral ? (activeSide[we.id] ?? 'left') : undefined)}
 					class="mt-2 w-full rounded-xl border border-dashed border-zinc-700 py-3 text-sm text-zinc-400 active:bg-zinc-800"
 				>
-					+ {isUnilateral ? `Set ${(activeSide[we.id] ?? 'left') === 'left' ? 'Links' : 'Rechts'} hinzufügen` : 'Add Set'}
+					+ {isUnilateral ? `Add ${(activeSide[we.id] ?? 'left') === 'left' ? 'Left' : 'Right'} Set` : 'Add Set'}
 				</button>
 			</div>
 		{/each}
