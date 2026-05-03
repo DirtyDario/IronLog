@@ -9,6 +9,7 @@
 	import { activeWorkout } from '$lib/stores/activeWorkout';
 	import { recomputeAllPRs } from '$lib/services/pr';
 	import { get } from 'svelte/store';
+	import { autoSeedFromWger } from '$lib/services/exerciseImport';
 
 	let { children } = $props();
 
@@ -27,6 +28,9 @@
 
 		(async () => {
 			await seedDefaultExercises();
+
+			// Auto-seed exercises from wger.de on first run (silently fails offline)
+			autoSeedFromWger().catch(() => {});
 
 			// S7: localStorage guard is set OUTSIDE the IDB upgrade transaction (in schema.ts
 			// the removeItem was moved out). Here we clear it after DB has opened so recompute

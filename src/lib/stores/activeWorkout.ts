@@ -127,6 +127,12 @@ function createActiveWorkoutStore() {
 				...syncMeta()
 			};
 			await db.workoutExercises.add(we);
+			// Auto-fill pinned notes from the Exercise itself
+			const exerciseData = await db.exercises.get(exerciseId);
+			if (exerciseData?.notes) {
+				we.notes = exerciseData.notes;
+				await db.workoutExercises.update(we.id, { notes: exerciseData.notes });
+			}
 			schedulePush();
 			if (state.workout) await updateLastActivity(state.workout.id);
 
@@ -375,6 +381,13 @@ function createActiveWorkoutStore() {
 					we.id === workoutExerciseId ? { ...we, notes, ...meta } : we
 				)
 			}));
+		},
+
+		async pinExerciseNotes(exerciseId: string, notes: string) {
+			// Save notes permanently on the Exercise itself
+			const meta = syncMeta();
+			await db.exercises.update(exerciseId, { notes: notes || undefined, ...meta });
+			schedulePush();
 		},
 
 		clearAutoCompleteNotice() {

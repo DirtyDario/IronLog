@@ -51,3 +51,8 @@ input[type='text'],
 textarea {
 	-webkit-user-modify: read-write-plaintext-only;
 }
+
+/* iOS: prevent all text undo stacking */
+input, textarea, select {
+	-webkit-user-select: text;
+}

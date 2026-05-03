@@ -1,6 +1,41 @@
 import { db } from '$lib/db/schema';
 import type { Exercise, MuscleGroup, ExerciseType } from '$lib/db/schema';
 
+/**
+ * Heuristic: returns true if an exercise name suggests it is unilateral (single-arm/single-leg).
+ * Used both for seed patching and wger import.
+ */
+export function isLikelyUnilateral(name: string): boolean {
+	const n = name.toLowerCase();
+	const patterns = [
+		'single arm', 'single-arm', 'one arm', 'one-arm',
+		'single leg', 'single-leg', 'one leg', 'one-leg',
+		'unilateral',
+		'dumbbell row', 'db row',
+		'dumbbell curl', 'db curl',
+		'hammer curl',
+		'incline curl',
+		'concentration curl',
+		'preacher curl',
+		'cable curl',
+		'dumbbell fly', 'db fly',
+		'incline dumbbell fly',
+		'lateral raise',
+		'front raise',
+		'lunge',
+		'split squat',
+		'step-up', 'step up',
+		'pistol squat',
+		'kickback',
+		'dumbbell shoulder press', 'db shoulder press',
+		'dumbbell incline', 'db incline',
+		'dumbbell decline', 'db decline',
+		'cable fly',
+		'cable crossover',
+	];
+	return patterns.some((p) => n.includes(p));
+}
+
 // wger.de muscle group ID → IronLog MuscleGroup mapping
 const MUSCLE_MAP: Record<number, MuscleGroup> = {
 	1: 'shoulders',   // Deltoids
@@ -125,4 +160,98 @@ export async function importExercises(selected: ImportPreview[]): Promise<number
 		await db.exercises.bulkAdd(toInsert);
 	}
 	return toInsert.length;
+}
+
+interface WgerInfoExercise {
+	id: number;
+	category: { id: number; name: string };
+	muscles: Array<{ id: number }>;
+	muscles_secondary: Array<{ id: number }>;
+	equipment: Array<{ id: number; name: string }>;
+	translations: Array<{ language: number; name: string }>;
+}
+
+interface WgerInfoResponse {
+	count: number;
+	next: string | null;
+	results: WgerInfoExercise[];
+}
+
+/**
+ * Fetches exercises from wger.de exerciseinfo API (has names!) and seeds them into the DB.
+ * Uses localStorage guard 'wgerSeedV1Done' to run only once.
+ * Silently fails if offline.
+ * Imports up to 400 exercises (2 pages of 200).
+ */
+export async function autoSeedFromWger(): Promise<void> {
+	if (typeof localStorage !== 'undefined' && localStorage.getItem('wgerSeedV1Done')) return;
+
+	try {
+		const allExercises: WgerInfoExercise[] = [];
+
+		// Fetch 2 pages (200 + 200 = up to 400 exercises)
+		const urls = [
+			'https://wger.de/api/v2/exerciseinfo/?format=json&limit=200&offset=0',
+			'https://wger.de/api/v2/exerciseinfo/?format=json&limit=200&offset=200',
+		];
+
+		for (const url of urls) {
+			try {
+				const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+				if (!res.ok) break;
+				const data: WgerInfoResponse = await res.json();
+				allExercises.push(...data.results);
+			} catch {
+				break; // offline or timeout → stop, try again next time
+			}
+		}
+
+		if (allExercises.length === 0) return;
+
+		// Get existing exercise names and ids for dedup
+		const existing = await db.exercises.toArray();
+		const existingNames = new Set(existing.map((e) => e.name.toLowerCase().trim()));
+		const existingIds = new Set(existing.map((e) => e.id));
+
+		const now = Date.now();
+		const toInsert: Exercise[] = [];
+
+		for (const ex of allExercises) {
+			// Find English translation (language=2)
+			const enTranslation = ex.translations?.find((t) => t.language === 2);
+			if (!enTranslation?.name?.trim()) continue;
+
+			const name = enTranslation.name.trim();
+			const id = `wger_${ex.id}`;
+
+			// Skip duplicates
+			if (existingNames.has(name.toLowerCase()) || existingIds.has(id)) continue;
+
+			const muscleGroup = getMuscleGroup(ex.muscles, ex.muscles_secondary, ex.category?.id ?? 0);
+			const type = guessExerciseType(ex.equipment ?? [], ex.category?.id ?? 0);
+
+			toInsert.push({
+				id,
+				name,
+				type,
+				muscleGroup,
+				isCustom: false,
+				isUnilateral: isLikelyUnilateral(name),
+				_synced: false,
+				_lastModified: now,
+			});
+		}
+
+		if (toInsert.length > 0) {
+			await db.exercises.bulkAdd(toInsert);
+		}
+
+		// Mark as done (even if 0 exercises were added — avoid repeated calls)
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem('wgerSeedV1Done', '1');
+		}
+	} catch (e) {
+		// Silently fail — will retry on next app start
+		console.warn('wger auto-seed failed:', e);
+	}
 }

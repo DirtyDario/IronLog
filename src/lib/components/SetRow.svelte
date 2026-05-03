@@ -114,8 +114,11 @@
 	<div class="flex flex-1 gap-2">
 		{#if exerciseType === 'weightReps'}
 			<input
-				type="number"
+				type="text"
 				inputmode="decimal"
+				autocorrect="off"
+				spellcheck="false"
+				autocomplete="off"
 				placeholder={placeholderWeight != null ? String(placeholderWeight) : 'kg'}
 				bind:value={weight}
 				onblur={() => onChange({ weight: parseFloat(weight) || undefined })}
@@ -123,8 +126,11 @@
 				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
 			/>
 			<input
-				type="number"
+				type="text"
 				inputmode="numeric"
+				autocorrect="off"
+				spellcheck="false"
+				autocomplete="off"
 				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
@@ -133,8 +139,11 @@
 			/>
 		{:else if exerciseType === 'bodyweightReps'}
 			<input
-				type="number"
+				type="text"
 				inputmode="numeric"
+				autocorrect="off"
+				spellcheck="false"
+				autocomplete="off"
 				placeholder={placeholderReps != null ? String(placeholderReps) : 'reps'}
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
@@ -143,8 +152,11 @@
 			/>
 		{:else if exerciseType === 'time'}
 			<input
-				type="number"
+				type="text"
 				inputmode="numeric"
+				autocorrect="off"
+				spellcheck="false"
+				autocomplete="off"
 				placeholder={placeholderDurationSec != null ? String(placeholderDurationSec) : 'sec'}
 				bind:value={durationSec}
 				onblur={() => onChange({ durationSec: parseInt(durationSec) || undefined })}
@@ -153,8 +165,11 @@
 			/>
 		{:else if exerciseType === 'distance'}
 			<input
-				type="number"
+				type="text"
 				inputmode="decimal"
+				autocorrect="off"
+				spellcheck="false"
+				autocomplete="off"
 				placeholder={placeholderDistanceKm != null ? String(placeholderDistanceKm) : 'km'}
 				bind:value={distanceKm}
 				onblur={() => onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined })}
