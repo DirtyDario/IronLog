@@ -1,37 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { supabase } from '$lib/supabase';
-	import { db } from '$lib/db/schema';
-
-	let email = $state('');
-	let otpCode = $state('');
-	let step = $state<'email' | 'code'>('email');
-	let loading = $state(false);
-	let error = $state<string | null>(null);
-
-	let wgerCleanupState = $state<'idle' | 'running' | 'done'>('idle');
-	let wgerCleanupCount = $state(0);
-
-	async function cleanupWgerExercises() {
-		wgerCleanupState = 'running';
-		// Find all wger exercise IDs
-		const wgerExercises = await db.exercises.filter((e) => e.id.startsWith('wger_')).toArray();
-		const wgerIds = new Set(wgerExercises.map((e) => e.id));
-
-		// Find which ones are used in any workout
-		const usedIds = new Set<string>();
-		const allWes = await db.workoutExercises.toArray();
-		for (const we of allWes) {
-			if (wgerIds.has(we.exerciseId)) usedIds.add(we.exerciseId);
-		}
-
-		// Delete only unused wger exercises
-		const toDelete = [...wgerIds].filter((id) => !usedIds.has(id));
-		await db.exercises.bulkDelete(toDelete);
-
-		wgerCleanupCount = toDelete.length;
-		wgerCleanupState = 'done';
-	}
 
 	async function sendOtp() {
 		if (!email.trim() || loading) return; // H15: guard double-submit
@@ -190,25 +159,4 @@
 			</button>
 		</div>
 	{/if}
-
-	<!-- Data cleanup -->
-	<div class="mt-6 rounded-2xl bg-zinc-900 p-5 flex flex-col gap-3">
-		<h2 class="text-base font-semibold">Data</h2>
-		<p class="text-xs text-zinc-400 leading-relaxed">
-			Remove imported wger.de exercises that you've never used in a workout. Exercises used in your history are kept.
-		</p>
-		{#if wgerCleanupState === 'done'}
-			<p class="text-sm text-green-400">
-				Done — {wgerCleanupCount} exercise{wgerCleanupCount === 1 ? '' : 's'} removed.
-			</p>
-		{:else}
-			<button
-				onclick={cleanupWgerExercises}
-				disabled={wgerCleanupState === 'running'}
-				class="w-full rounded-xl border border-zinc-700 py-3 text-sm font-medium text-zinc-300 active:bg-zinc-800 disabled:opacity-50"
-			>
-				{wgerCleanupState === 'running' ? 'Removing…' : 'Remove unused wger exercises'}
-			</button>
-		{/if}
-	</div>
 </div>
