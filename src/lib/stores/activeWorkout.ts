@@ -18,8 +18,10 @@ interface ActiveWorkoutState {
 		sets: Record<string, ExerciseSet[]>;
 		previousSets: Record<string, LastWorkoutInfo | null>;
 		startedAt: Date | null;
+		autoCompleteNotice: null;
 	} | null;
 	rehydrating: boolean; // H12: true while async rehydrate() is in progress
+	autoCompleteNotice: 'finished' | 'discarded' | null;
 }
 
 function syncMeta() {
@@ -44,8 +46,15 @@ function createActiveWorkoutStore() {
 		startedAt: null,
 		previousSets: {},
 		lastDiscarded: null,
-		rehydrating: false
+		rehydrating: false,
+		autoCompleteNotice: null
 	});
+
+	async function updateLastActivity(workoutId: string) {
+		const ts = Date.now();
+		await db.workouts.update(workoutId, { lastActivityAt: ts, _lastModified: ts });
+		update((s) => s.workout ? { ...s, workout: { ...s.workout, lastActivityAt: ts } } : s);
+	}
 
 	return {
 		subscribe,
@@ -75,7 +84,8 @@ function createActiveWorkoutStore() {
 					startedAt: new Date(workout.date),
 					previousSets,
 					lastDiscarded: null,
-					rehydrating: false
+					rehydrating: false,
+					autoCompleteNotice: null
 				});
 			} finally {
 				update((s) => ({ ...s, rehydrating: false }));
@@ -100,7 +110,8 @@ function createActiveWorkoutStore() {
 				startedAt: new Date(),
 				previousSets: {},
 				lastDiscarded: null,
-				rehydrating: false
+				rehydrating: false,
+				autoCompleteNotice: null
 			});
 			return workout;
 		},
@@ -117,6 +128,7 @@ function createActiveWorkoutStore() {
 			};
 			await db.workoutExercises.add(we);
 			schedulePush();
+			if (state.workout) await updateLastActivity(state.workout.id);
 
 			// Fetch last workout's sets for this exercise (for placeholder + header)
 			const lastInfo = await getLastFinishedSetsFor(exerciseId);
@@ -130,7 +142,7 @@ function createActiveWorkoutStore() {
 			return we;
 		},
 
-		async addSet(workoutExerciseId: string) {
+		async addSet(workoutExerciseId: string, side?: 'left' | 'right') {
 			const state = get({ subscribe });
 			const existing = state.sets[workoutExerciseId] ?? [];
 			// Do NOT pre-populate weight/reps — show as placeholder only
@@ -138,6 +150,7 @@ function createActiveWorkoutStore() {
 				id: crypto.randomUUID(),
 				workoutExerciseId,
 				order: existing.length,
+				side,
 				weight: undefined,
 				reps: undefined,
 				durationSec: undefined,
@@ -148,6 +161,7 @@ function createActiveWorkoutStore() {
 			};
 			await db.sets.add(newSet);
 			schedulePush();
+			if (state.workout) await updateLastActivity(state.workout.id);
 			update((s) => ({
 				...s,
 				sets: {
@@ -162,6 +176,10 @@ function createActiveWorkoutStore() {
 			const meta = syncMeta();
 			await db.sets.update(setId, { ...changes, ...meta });
 			schedulePush();
+			if (changes.completed === true) {
+				const state = get({ subscribe });
+				if (state.workout) await updateLastActivity(state.workout.id);
+			}
 			update((s) => ({
 				...s,
 				sets: {
@@ -243,7 +261,7 @@ function createActiveWorkoutStore() {
 			// Reset rest timer
 			restTimer.stop();
 
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false });
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false, autoCompleteNotice: null });
 
 			return newPRs;
 		},
@@ -278,12 +296,13 @@ function createActiveWorkoutStore() {
 				workoutExercises: [...state.workoutExercises],
 				sets: { ...state.sets },
 				previousSets: { ...state.previousSets },
-				startedAt: state.startedAt
+				startedAt: state.startedAt,
+				autoCompleteNotice: null as null
 			});
 
 			// Clear UI immediately (feels instant)
 			restTimer.stop();
-			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: snapshot });
+			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: snapshot, rehydrating: false, autoCompleteNotice: null });
 
 			// Write tombstones + delete from Dexie
 			const weIds = snapshot.workoutExercises.map((we) => we.id);
@@ -340,8 +359,65 @@ function createActiveWorkoutStore() {
 				sets: snap.sets,
 				startedAt: snap.startedAt,
 				previousSets: snap.previousSets,
-				lastDiscarded: null
+				lastDiscarded: null,
+				rehydrating: false,
+				autoCompleteNotice: null
 			});
+		},
+
+		async updateExerciseNotes(workoutExerciseId: string, notes: string) {
+			const meta = syncMeta();
+			await db.workoutExercises.update(workoutExerciseId, { notes, ...meta });
+			schedulePush();
+			update((s) => ({
+				...s,
+				workoutExercises: s.workoutExercises.map((we) =>
+					we.id === workoutExerciseId ? { ...we, notes, ...meta } : we
+				)
+			}));
+		},
+
+		clearAutoCompleteNotice() {
+			update((s) => ({ ...s, autoCompleteNotice: null }));
+		},
+
+		async checkAutoComplete() {
+			// Called from layout on app load after rehydrate()
+			const state = get({ subscribe });
+			if (!state.workout) return;
+			const workout = state.workout;
+			const lastActivity = workout.lastActivityAt ?? new Date(workout.date).getTime();
+			const elapsed = Date.now() - lastActivity;
+			if (elapsed < 60 * 60 * 1000) return; // less than 1h → do nothing
+
+			// Check if there are any completed sets
+			const allSets = Object.values(state.sets).flat();
+			const completedSets = allSets.filter((s) => s.completed);
+
+			if (completedSets.length === 0) {
+				// No completed sets → discard
+				await activeWorkout.discard();
+				update((s) => ({ ...s, autoCompleteNotice: 'discarded' as const, lastDiscarded: null }));
+			} else {
+				// Has completed sets → finish with lastActivityAt as finishedAt
+				const workoutId = workout.id;
+				const finishedAt = new Date(lastActivity);
+				const durationSec = Math.round((lastActivity - new Date(workout.date).getTime()) / 1000);
+
+				// Remove incomplete sets (tombstone them)
+				const incompleteSets = allSets.filter((s) => !s.completed);
+				for (const s of incompleteSets) {
+					await writeTombstone('set', s.id);
+					await db.sets.delete(s.id);
+				}
+
+				await db.workouts.update(workoutId, { finishedAt, durationSec, ...syncMeta() });
+				schedulePush();
+
+				await detectPRsForWorkout(workoutId);
+
+				set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false, autoCompleteNotice: 'finished' });
+			}
 		}
 	};
 }

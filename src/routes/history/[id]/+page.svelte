@@ -102,7 +102,7 @@
 				<div class="flex flex-col gap-1">
 					{#each sets as set, i}
 						<div class="flex justify-between text-sm">
-							<span class="text-zinc-500">Set {i + 1}</span>
+							<span class="text-zinc-500">Set {i + 1}{#if set.side}<span class="text-xs text-zinc-500 ml-0.5">{set.side === 'left' ? 'L' : 'R'}</span>{/if}</span>
 							<span class="font-medium">{formatSet(set, exercise?.type ?? 'weightReps')}</span>
 						</div>
 					{/each}

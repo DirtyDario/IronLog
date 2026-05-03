@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { epley, getPRsForWorkout } from '$lib/services/pr';
+	import { saveWorkoutAsRoutine } from '$lib/services/routineFromWorkout';
 	// S8: dynamic import to avoid SSR crash (canvas-confetti touches window/document)
 
 	interface ExerciseSummary {
@@ -24,11 +25,15 @@
 	let totalReps = $state(0);
 	let workoutPRs: PersonalRecord[] = $state([]);
 	let exerciseNameMap: Record<string, string> = $state({});
+	let showSaveRoutineModal = $state(false);
+	let routineName = $state('');
+	let savedRoutineId = $state<string | null>(null);
 
 	onMount(async () => {
 		const id = $page.params.id;
 		workout = (await db.workouts.get(id)) ?? null;
 		if (!workout) { goto('/history'); return; }
+		if (workout?.name) routineName = workout.name;
 
 		const wes = await db.workoutExercises.where('workoutId').equals(id).sortBy('order');
 		const result: ExerciseSummary[] = [];
@@ -133,6 +138,13 @@
 	function formatVolSummary(kg: number) {
 		if (kg >= 1000) return `${(kg / 1000).toFixed(2).replace(/\.?0+$/, '')}t`;
 		return `${kg} kg`;
+	}
+
+	async function handleSaveAsRoutine() {
+		if (!workout || !routineName.trim()) return;
+		const id = await saveWorkoutAsRoutine(workout.id, routineName.trim());
+		savedRoutineId = id;
+		showSaveRoutineModal = false;
 	}
 
 	function prLabel(pr: PersonalRecord): string {
@@ -258,6 +270,21 @@
 		>
 			Done
 		</button>
+		{#if savedRoutineId}
+			<a
+				href="/routines/{savedRoutineId}"
+				class="block w-full rounded-2xl border border-green-700/40 bg-green-900/20 py-3 text-center text-sm font-medium text-green-400 active:bg-green-900/30"
+			>
+				✓ Als Routine gespeichert – Anzeigen
+			</a>
+		{:else}
+			<button
+				onclick={() => { showSaveRoutineModal = true; }}
+				class="w-full rounded-2xl border border-zinc-700 py-3 text-sm font-medium text-zinc-300 active:bg-zinc-900"
+			>
+				Als Routine speichern
+			</button>
+		{/if}
 		{#if workout}
 		<a
 			href="/history/{workout.id}"
@@ -268,3 +295,34 @@
 		{/if}
 	</div>
 </div>
+
+{#if showSaveRoutineModal}
+	<div class="fixed inset-0 z-50 flex items-end bg-black/60 p-4">
+		<div class="w-full rounded-2xl bg-zinc-900 p-6">
+			<h2 class="text-xl font-bold">Als Routine speichern</h2>
+			<p class="mt-1 text-sm text-zinc-400">Alle Übungen werden in eine neue Routine übernommen.</p>
+			<input
+				type="text"
+				bind:value={routineName}
+				placeholder="Routine Name"
+				class="mt-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				autofocus
+			/>
+			<div class="mt-4 flex gap-3">
+				<button
+					onclick={() => (showSaveRoutineModal = false)}
+					class="flex-1 rounded-xl border border-zinc-700 py-3 font-medium text-zinc-300"
+				>
+					Abbrechen
+				</button>
+				<button
+					onclick={handleSaveAsRoutine}
+					disabled={!routineName.trim()}
+					class="flex-1 rounded-xl bg-orange-500 py-3 font-bold text-white disabled:opacity-50"
+				>
+					Speichern
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}

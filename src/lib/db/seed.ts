@@ -22,7 +22,7 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'pullup', name: 'Pull-Up', type: 'bodyweightReps', muscleGroup: 'back' },
 	{ id: 'chinup', name: 'Chin-Up', type: 'bodyweightReps', muscleGroup: 'back' },
 	{ id: 'barbell-row', name: 'Barbell Row', type: 'weightReps', muscleGroup: 'back' },
-	{ id: 'dumbbell-row', name: 'Dumbbell Row', type: 'weightReps', muscleGroup: 'back' },
+	{ id: 'dumbbell-row', name: 'Dumbbell Row', type: 'weightReps', muscleGroup: 'back', isUnilateral: true },
 	{ id: 'lat-pulldown', name: 'Lat Pulldown', type: 'weightReps', muscleGroup: 'back' },
 	{ id: 'seated-cable-row', name: 'Seated Cable Row', type: 'weightReps', muscleGroup: 'back' },
 	{ id: 'tbar-row', name: 'T-Bar Row', type: 'weightReps', muscleGroup: 'back' },
@@ -77,15 +77,15 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'leg-press', name: 'Leg Press', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'leg-extension', name: 'Leg Extension', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'leg-curl', name: 'Leg Curl', type: 'weightReps', muscleGroup: 'legs' },
-	{ id: 'lunge', name: 'Lunge', type: 'weightReps', muscleGroup: 'legs' },
-	{ id: 'bulgarian-split', name: 'Bulgarian Split Squat', type: 'weightReps', muscleGroup: 'legs' },
+	{ id: 'lunge', name: 'Lunge', type: 'weightReps', muscleGroup: 'legs', isUnilateral: true },
+	{ id: 'bulgarian-split', name: 'Bulgarian Split Squat', type: 'weightReps', muscleGroup: 'legs', isUnilateral: true },
 	{ id: 'calf-raise', name: 'Calf Raise', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'hack-squat', name: 'Hack Squat', type: 'weightReps', muscleGroup: 'legs' },
 
 	// Glutes
 	{ id: 'hip-thrust', name: 'Hip Thrust', type: 'weightReps', muscleGroup: 'glutes' },
 	{ id: 'glute-bridge', name: 'Glute Bridge', type: 'weightReps', muscleGroup: 'glutes' },
-	{ id: 'cable-kickback', name: 'Cable Kickback', type: 'weightReps', muscleGroup: 'glutes' },
+	{ id: 'cable-kickback', name: 'Cable Kickback', type: 'weightReps', muscleGroup: 'glutes', isUnilateral: true },
 	{ id: 'rdl', name: 'Romanian Deadlift', type: 'weightReps', muscleGroup: 'glutes' },
 
 	// Core

@@ -12,6 +12,14 @@
 
 	let { children } = $props();
 
+	// Auto-dismiss auto-complete notice after 8 seconds
+	$effect(() => {
+		if ($activeWorkout.autoCompleteNotice) {
+			const timer = setTimeout(() => activeWorkout.clearAutoCompleteNotice(), 8000);
+			return () => clearTimeout(timer);
+		}
+	});
+
 	onMount(() => {
 		// H16: onMount must return a sync cleanup fn (not async).
 		// All async work is fired-and-forgotten inside, cleanup fn is returned synchronously.
@@ -32,6 +40,9 @@
 			if (!get(activeWorkout).workout) {
 				await activeWorkout.rehydrate();
 			}
+
+			// Check auto-complete (1h inactivity)
+			await activeWorkout.checkAutoComplete();
 
 			// Orphan cleanup: never delete currently active workout; 48h cutoff
 			const activeId = get(activeWorkout).workout?.id;
@@ -103,3 +114,26 @@
 <main id="app-content">
 	{@render children()}
 </main>
+
+{#if $activeWorkout.autoCompleteNotice}
+	<div class="fixed bottom-20 left-4 right-4 z-50 rounded-2xl bg-zinc-800 p-4 shadow-xl flex items-start justify-between gap-3">
+		<div>
+			<p class="text-sm font-semibold text-zinc-100">
+				{$activeWorkout.autoCompleteNotice === 'finished' 
+					? 'Workout automatisch beendet' 
+					: 'Workout automatisch verworfen'}
+			</p>
+			<p class="text-xs text-zinc-400 mt-0.5">
+				{$activeWorkout.autoCompleteNotice === 'finished'
+					? 'Dein Workout war länger als 1h inaktiv und wurde mit den abgeschlossenen Sets beendet.'
+					: 'Dein Workout hatte keine abgeschlossenen Sets und wurde nach 1h Inaktivität verworfen.'}
+			</p>
+		</div>
+		<button
+			onclick={() => activeWorkout.clearAutoCompleteNotice()}
+			class="shrink-0 text-zinc-500 active:text-zinc-300 text-lg leading-none"
+		>
+			×
+		</button>
+	</div>
+{/if}

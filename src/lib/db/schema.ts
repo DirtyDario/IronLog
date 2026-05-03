@@ -26,6 +26,7 @@ export interface Exercise {
 	type: ExerciseType;
 	muscleGroup: MuscleGroup;
 	isCustom: boolean;
+	isUnilateral?: boolean;
 	notes?: string;
 	_synced?: boolean;
 	_lastModified?: number;
@@ -38,6 +39,7 @@ export interface Workout {
 	notes?: string;
 	durationSec?: number;
 	finishedAt?: Date;
+	lastActivityAt?: number;
 	_synced?: boolean;
 	_lastModified?: number;
 }
@@ -62,6 +64,7 @@ export interface ExerciseSet {
 	distanceM?: number;
 	isWarmup: boolean;
 	completed: boolean;
+	side?: 'left' | 'right';
 	notes?: string;
 	_synced?: boolean;
 	_lastModified?: number;
@@ -192,6 +195,18 @@ export class IronLogDB extends Dexie {
 				// S7: localStorage must NOT be called inside the IDB upgrade transaction.
 				// The guard is removed in +layout.svelte's onMount AFTER the DB opens.
 			});
+
+		// v5 — unilateral exercises (L/R), set side, workout lastActivityAt
+		this.version(5).stores({
+			exercises: 'id, name, type, muscleGroup, isCustom, _synced',
+			workouts: 'id, date, finishedAt, lastActivityAt, _synced',
+			workoutExercises: 'id, workoutId, exerciseId, order, _synced',
+			sets: 'id, workoutExerciseId, order, side, _synced',
+			routines: 'id, name, createdAt, _synced',
+			routineExercises: 'id, routineId, exerciseId, order, _synced',
+			personalRecords: 'id, exerciseId, category, bucket, workoutId, setId, date, [exerciseId+category+bucket], _synced',
+			tombstones: 'id, entity, entityId, _synced'
+		});
 	}
 }
 

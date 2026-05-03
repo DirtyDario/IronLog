@@ -105,6 +105,12 @@
 		setValueRegistry.delete(setId);
 	}
 
+	// Notes toggle state per exercise
+	let notesOpen = $state<Record<string, boolean>>({});
+
+	// Active side tab per exercise (for unilateral exercises)
+	let activeSide = $state<Record<string, 'left' | 'right'>>({});
+
 	// H8: guard against double-tap finish
 	let isFinishing = $state(false);
 
@@ -193,9 +199,12 @@
 
 <!-- NOTE: "Undo discard" snackbar is in +page.svelte (home) because discard navigates there -->
 
-<div class="flex flex-col gap-4 p-4 pt-4 pb-40">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
+<div class="flex flex-col gap-4 p-4 pt-2 pb-40">
+	<!-- Sticky header: timer + actions -->
+	<div
+		class="sticky z-40 -mx-4 px-4 py-2 bg-[#09090b] border-b border-zinc-800/50 flex items-center justify-between"
+		style="top: calc(58px + env(safe-area-inset-top, 44px))"
+	>
 		<div class="flex-1 min-w-0 mr-2">
 			{#if editingName}
 				<input
@@ -241,9 +250,11 @@
 		</div>
 	</div>
 
-	<!-- Rest timer bar -->
+	<!-- Rest timer bar (sticky, directly below header) -->
 	{#if $restTimer.running}
-		<RestTimerBar />
+		<div class="sticky z-40 -mx-4 px-4" style="top: calc(58px + env(safe-area-inset-top, 44px) + 56px)">
+			<RestTimerBar />
+		</div>
 	{/if}
 
 	<!-- Exercises -->
@@ -257,6 +268,7 @@
 			{@const exercise = exerciseMap[we.exerciseId]}
 			{@const sets = $activeWorkout.sets[we.id] ?? []}
 			{@const summary = lastWorkoutSummary(we.id, exercise?.type ?? 'weightReps')}
+			{@const isUnilateral = exerciseMap[we.exerciseId]?.isUnilateral ?? false}
 			<div animate:flip={{ duration: FLIP_MS }} class="rounded-2xl bg-zinc-900 p-4">
 				<div class="mb-3 flex items-center gap-2">
 					<!-- Drag handle -->
@@ -272,7 +284,11 @@
 						⠿
 					</div>
 					<div class="flex-1">
-						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}</h2>
+						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}
+						{#if we.notes}
+							<span class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+						{/if}
+					</h2>
 						{#if summary}
 							<p class="text-xs text-zinc-500">{summary}</p>
 						{:else if exercise?.muscleGroup}
@@ -290,6 +306,49 @@
 					</button>
 				</div>
 
+				<!-- Notes toggle -->
+				<div class="mb-2">
+					<button
+						onclick={() => { notesOpen[we.id] = !notesOpen[we.id]; }}
+						class="flex items-center gap-1.5 text-xs text-zinc-500 active:text-zinc-300"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+							<path fill-rule="evenodd" d="M10 2c-2.236 0-4.43.18-6.57.524C1.993 2.755 1 4.014 1 5.426v5.148c0 1.413.993 2.67 2.43 2.902.848.137 1.705.248 2.57.331v3.443a.75.75 0 0 0 1.28.53l3.58-3.579a.78.78 0 0 1 .527-.224 41.202 41.202 0 0 0 5.183-.5c1.437-.232 2.43-1.49 2.43-2.903V5.426c0-1.413-.993-2.67-2.43-2.902A41.289 41.289 0 0 0 10 2Zm0 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM8 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm5 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+						</svg>
+						{notesOpen[we.id] ? 'Notiz ausblenden' : (we.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen')}
+					</button>
+					{#if notesOpen[we.id]}
+						<textarea
+							value={we.notes ?? ''}
+							onblur={(e) => {
+								const val = (e.target as HTMLTextAreaElement).value.trim();
+								activeWorkout.updateExerciseNotes(we.id, val);
+							}}
+							placeholder="Notizen zu dieser Übung..."
+							rows="2"
+							class="mt-1.5 w-full rounded-xl bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+						></textarea>
+					{/if}
+				</div>
+
+				<!-- Set header -->
+				{#if isUnilateral}
+					<!-- L/R Tab switcher -->
+					<div class="flex gap-1 mb-2">
+						{#each (['left', 'right'] as const) as side}
+							<button
+								onclick={() => { activeSide[we.id] = side; }}
+								class="flex-1 rounded-lg py-1.5 text-sm font-semibold transition-colors
+									{(activeSide[we.id] ?? 'left') === side
+										? 'bg-orange-500 text-white'
+										: 'bg-zinc-800 text-zinc-400'}"
+							>
+								{side === 'left' ? 'Links' : 'Rechts'}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
 				<!-- Set header -->
 				<div class="mb-1 grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 px-1 text-xs font-medium text-zinc-500">
 					<span>Set</span>
@@ -305,7 +364,7 @@
 					<span></span>
 				</div>
 
-				{#each sets as set, i (set.id)}
+				{#each (isUnilateral ? sets.filter((s) => (s.side ?? 'left') === (activeSide[we.id] ?? 'left')) : sets) as set, i (set.id)}
 					{@const ph = getPlaceholders(we.id, i)}
 					<SetRow
 						{set}
@@ -324,10 +383,10 @@
 				{/each}
 
 				<button
-					onclick={() => activeWorkout.addSet(we.id)}
+					onclick={() => activeWorkout.addSet(we.id, isUnilateral ? (activeSide[we.id] ?? 'left') : undefined)}
 					class="mt-2 w-full rounded-xl border border-dashed border-zinc-700 py-3 text-sm text-zinc-400 active:bg-zinc-800"
 				>
-					+ Add Set
+					+ {isUnilateral ? `Set ${(activeSide[we.id] ?? 'left') === 'left' ? 'Links' : 'Rechts'} hinzufügen` : 'Add Set'}
 				</button>
 			</div>
 		{/each}
