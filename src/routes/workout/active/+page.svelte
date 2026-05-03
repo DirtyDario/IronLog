@@ -318,15 +318,23 @@
 
 				<!-- Notes toggle -->
 				<div class="mb-2">
-					<div class="flex items-center justify-between">
+					<div class="flex items-center justify-between gap-2">
 						<button
 							onclick={() => { notesOpen[we.id] = !notesOpen[we.id]; }}
-							class="flex items-center gap-1.5 text-xs text-zinc-500 active:text-zinc-300"
+							class="flex items-center gap-1.5 text-xs min-w-0
+								{we.notes && !notesOpen[we.id] ? 'text-zinc-300' : 'text-zinc-500'} active:text-zinc-300"
 						>
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
-								<path fill-rule="evenodd" d="M10 2c-2.236 0-4.43.18-6.57.524C1.993 2.755 1 4.014 1 5.426v5.148c0 1.413.993 2.67 2.43 2.902.848.137 1.705.248 2.57.331v3.443a.75.75 0 0 0 1.28.53l3.58-3.579a.78.78 0 0 1 .527-.224 41.202 41.202 0 0 0 5.183-.5c1.437-.232 2.43-1.49 2.43-2.903V5.426c0-1.413-.993-2.67-2.43-2.902A41.289 41.289 0 0 0 10 2Zm0 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM8 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Zm5 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+							<!-- Pencil / note icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5 shrink-0">
+								<path d="M2.695 14.763l-1.262 3.154a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.885L17.5 5.5a2.121 2.121 0 0 0-3-3L3.58 13.42a4 4 0 0 0-.885 1.343z" />
 							</svg>
-							{notesOpen[we.id] ? 'Notiz ausblenden' : (we.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen')}
+							{#if notesOpen[we.id]}
+								<span>Hide note</span>
+							{:else if we.notes}
+								<span class="truncate max-w-[180px]">{we.notes}</span>
+							{:else}
+								<span>Add note</span>
+							{/if}
 						</button>
 						{#if we.notes || notesOpen[we.id]}
 							{@const currentNoteText = getNoteText(we.id, we.notes)}
@@ -347,17 +355,20 @@
 									const ex = await db.exercises.get(we.exerciseId);
 									if (ex) exerciseMap = { ...exerciseMap, [ex.id]: ex };
 								}}
-								title={isPinned ? 'Notiz ist gepinnt – tippen zum Lösen' : 'Notiz an Übung pinnen'}
-								class="flex items-center justify-center w-7 h-7 rounded-lg text-xs
+								title={isPinned ? 'Unpin note from exercise' : 'Pin note to exercise'}
+								class="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg
 									{isPinned ? 'text-orange-500' : 'text-zinc-600 active:text-orange-400'}"
 							>
 								{#if isPinned}
+									<!-- Solid lock (pinned) -->
 									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-										<path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd" />
+										<path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A3.5 3.5 0 0 1 10 2a3.5 3.5 0 0 1 3.5 3.5V9H13V5.5A3 3 0 0 0 10 2.5 3 3 0 0 0 7 5.5V9h-.5A1.5 1.5 0 0 0 5 10.5v5A1.5 1.5 0 0 0 6.5 17h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 13.5 9H13V5.5A3.5 3.5 0 0 0 10 2Z" clip-rule="evenodd" />
 									</svg>
 								{:else}
-									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-										<path fill-rule="evenodd" d="M14.5 1A4.5 4.5 0 0 0 10 5.5V9H3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5V5.5a3 3 0 1 1 6 0v2.75a.75.75 0 0 0 1.5 0V5.5A4.5 4.5 0 0 0 14.5 1Z" clip-rule="evenodd" />
+									<!-- Outline lock (unpinned) — simple rectangle + shackle -->
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
+										<rect x="4" y="9" width="12" height="9" rx="1.5" />
+										<path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round"/>
 									</svg>
 								{/if}
 							</button>
@@ -374,7 +385,7 @@
 									activeWorkout.updateExerciseNotes(we.id, val.trim());
 								}, 400);
 							}}
-							placeholder="Notizen zu dieser Übung..."
+							placeholder="Notes for this exercise..."
 							rows="2"
 							class="mt-1.5 w-full rounded-xl bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
 						></textarea>
