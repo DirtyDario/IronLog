@@ -24,11 +24,13 @@ export async function saveWorkoutAsRoutine(workoutId: string, routineName: strin
     for (let i = 0; i < wes.length; i++) {
         const we = wes[i];
         const sets = await db.sets.where('workoutExerciseId').equals(we.id).toArray();
+        // Prefer completed sets; fall back to all sets so routine is never empty
         const completedSets = sets.filter((s) => s.completed);
-        if (completedSets.length === 0) continue;
+        const useSets = completedSets.length > 0 ? completedSets : sets;
+        if (useSets.length === 0) continue;
 
-        const avgReps = completedSets.some((s) => s.reps != null)
-            ? Math.round(completedSets.reduce((sum, s) => sum + (s.reps ?? 0), 0) / completedSets.filter((s) => s.reps != null).length)
+        const avgReps = useSets.some((s) => s.reps != null)
+            ? Math.round(useSets.reduce((sum, s) => sum + (s.reps ?? 0), 0) / useSets.filter((s) => s.reps != null).length)
             : undefined;
 
         const re: RoutineExercise = {
@@ -36,7 +38,7 @@ export async function saveWorkoutAsRoutine(workoutId: string, routineName: strin
             routineId: routine.id,
             exerciseId: we.exerciseId,
             order: i,
-            targetSets: completedSets.length,
+            targetSets: useSets.length,
             targetReps: avgReps,
             ...syncMeta()
         };

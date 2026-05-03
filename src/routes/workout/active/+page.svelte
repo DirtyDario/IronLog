@@ -108,6 +108,16 @@
 	// Notes toggle state per exercise
 	let notesOpen = $state<Record<string, boolean>>({});
 
+	// Draft note text per exercise (local buffer so textarea is controlled)
+	let noteDraft = $state<Record<string, string>>({});
+
+	function getNoteText(weId: string, storeNotes: string | undefined): string {
+		return weId in noteDraft ? noteDraft[weId] : (storeNotes ?? '');
+	}
+
+	// Debounce timer refs for note saving
+	const noteTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
 	// Active side tab per exercise (for unilateral exercises)
 	let activeSide = $state<Record<string, 'left' | 'right'>>({});
 
@@ -319,14 +329,20 @@
 							{notesOpen[we.id] ? 'Notiz ausblenden' : (we.notes ? 'Notiz bearbeiten' : 'Notiz hinzufügen')}
 						</button>
 						{#if we.notes || notesOpen[we.id]}
-							{@const isPinned = exerciseMap[we.exerciseId]?.notes === we.notes && !!we.notes}
+							{@const currentNoteText = getNoteText(we.id, we.notes)}
+							{@const isPinned = exerciseMap[we.exerciseId]?.notes === currentNoteText && !!currentNoteText}
 							<button
 								onclick={async () => {
-									const currentNote = we.notes ?? '';
+									// If there's an unsaved draft, save it first
+									if (we.id in noteDraft) {
+										clearTimeout(noteTimers[we.id]);
+										await activeWorkout.updateExerciseNotes(we.id, noteDraft[we.id].trim());
+									}
+									const noteToPin = getNoteText(we.id, we.notes);
 									if (isPinned) {
 										await activeWorkout.pinExerciseNotes(we.exerciseId, '');
 									} else {
-										await activeWorkout.pinExerciseNotes(we.exerciseId, currentNote);
+										await activeWorkout.pinExerciseNotes(we.exerciseId, noteToPin);
 									}
 									const ex = await db.exercises.get(we.exerciseId);
 									if (ex) exerciseMap = { ...exerciseMap, [ex.id]: ex };
@@ -349,10 +365,14 @@
 					</div>
 					{#if notesOpen[we.id]}
 						<textarea
-							value={we.notes ?? ''}
-							onblur={(e) => {
-								const val = (e.target as HTMLTextAreaElement).value.trim();
-								activeWorkout.updateExerciseNotes(we.id, val);
+							value={getNoteText(we.id, we.notes)}
+							oninput={(e) => {
+								const val = (e.target as HTMLTextAreaElement).value;
+								noteDraft[we.id] = val;
+								clearTimeout(noteTimers[we.id]);
+								noteTimers[we.id] = setTimeout(() => {
+									activeWorkout.updateExerciseNotes(we.id, val.trim());
+								}, 400);
 							}}
 							placeholder="Notizen zu dieser Übung..."
 							rows="2"

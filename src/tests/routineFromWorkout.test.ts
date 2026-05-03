@@ -47,7 +47,7 @@ describe('saveWorkoutAsRoutine', () => {
         expect(routineExercises[0].targetReps).toBe(8);
     });
 
-    it('skips exercises with no completed sets', async () => {
+    it('includes exercises with only uncompleted sets (fallback)', async () => {
         const exerciseId = crypto.randomUUID();
         await db.exercises.add({ id: exerciseId, name: 'Squat', type: 'weightReps', muscleGroup: 'legs', isCustom: false });
 
@@ -59,9 +59,11 @@ describe('saveWorkoutAsRoutine', () => {
 
         await db.sets.add({ id: crypto.randomUUID(), workoutExerciseId: weId, order: 0, isWarmup: false, completed: false });
 
-        const routineId = await saveWorkoutAsRoutine(workoutId, 'Empty Routine');
+        const routineId = await saveWorkoutAsRoutine(workoutId, 'Fallback Routine');
         const routineExercises = await db.routineExercises.where('routineId').equals(routineId).toArray();
-        expect(routineExercises).toHaveLength(0);
+        // Falls back to all sets when no completed sets exist
+        expect(routineExercises).toHaveLength(1);
+        expect(routineExercises[0].targetSets).toBe(1);
     });
 
     it('returns routine id as string', async () => {
