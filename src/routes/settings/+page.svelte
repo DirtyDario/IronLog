@@ -2,6 +2,12 @@
 	import { auth } from '$lib/stores/auth';
 	import { supabase } from '$lib/supabase';
 
+	let email = $state('');
+	let otpCode = $state('');
+	let step = $state<'email' | 'code'>('email');
+	let loading = $state(false);
+	let error = $state<string | null>(null);
+
 	async function sendOtp() {
 		if (!email.trim() || loading) return; // H15: guard double-submit
 		loading = true;
