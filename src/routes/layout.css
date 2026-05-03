@@ -4,6 +4,16 @@
 	--color-orange-500: #f97316;
 }
 
+/* Accent color CSS variables — overridden at runtime by settingsStore */
+:root {
+	--accent-400: #fb923c;
+	--accent-500: #f97316;
+	--accent-600: #ea6b0c;
+	--accent-500-10: rgba(249,115,22,0.10);
+	--accent-500-20: rgba(249,115,22,0.20);
+	--accent-500-30: rgba(249,115,22,0.30);
+}
+
 html, body {
 	margin: 0;
 	padding: 0;
@@ -35,6 +45,24 @@ html, body {
 	padding-bottom: env(safe-area-inset-bottom, 16px);
 	min-height: 100dvh;
 }
+
+/* Accent utility classes — map to CSS vars set by settingsStore */
+.text-accent-400        { color: var(--accent-400); }
+.text-accent-500        { color: var(--accent-500); }
+.bg-accent-500          { background-color: var(--accent-500); }
+.bg-accent-600          { background-color: var(--accent-600); }
+.active\:bg-accent-500:active  { background-color: var(--accent-500); }
+.active\:bg-accent-600:active  { background-color: var(--accent-600); }
+.bg-accent-500\/10      { background-color: var(--accent-500-10); }
+.bg-accent-500\/20      { background-color: var(--accent-500-20); }
+.border-accent-500\/20  { border-color: var(--accent-500-20); }
+.border-accent-500\/30  { border-color: var(--accent-500-30); }
+.border-accent-500      { border-color: var(--accent-500); }
+.accent-accent-500      { accent-color: var(--accent-500); }
+/* focus ring */
+.focus\:ring-accent-500:focus { --tw-ring-color: var(--accent-500); }
+/* active:text */
+.active\:text-accent-400:active { color: var(--accent-400); }
 
 ::-webkit-scrollbar { display: none; }
 

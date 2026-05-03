@@ -340,7 +340,7 @@
 				onclick={() => (activeTab = tab.id)}
 				class="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-colors
 					{activeTab === tab.id
-					? 'bg-orange-500 text-white'
+					? 'bg-accent-500 text-white'
 					: 'bg-zinc-900 text-zinc-400 active:bg-zinc-800'}"
 			>
 				{tab.label}
@@ -357,10 +357,10 @@
 		<div class="flex flex-col gap-4 px-4">
 			<!-- Streak banner -->
 			{#if streak > 0}
-				<div class="rounded-2xl bg-orange-500/10 border border-orange-500/30 p-4 flex items-center gap-4">
+				<div class="rounded-2xl bg-accent-500/10 border border-accent-500/30 p-4 flex items-center gap-4">
 					<div class="text-4xl">🔥</div>
 					<div>
-						<p class="text-2xl font-bold text-orange-400">{streak} week{streak !== 1 ? 's' : ''}</p>
+						<p class="text-2xl font-bold text-accent-400">{streak} week{streak !== 1 ? 's' : ''}</p>
 						<p class="text-sm text-zinc-400">Current training streak</p>
 					</div>
 				</div>
@@ -369,19 +369,19 @@
 			<!-- Stat grid -->
 			<div class="grid grid-cols-2 gap-3">
 				<div class="rounded-2xl bg-zinc-900 p-4">
-					<p class="text-3xl font-bold text-orange-500">{totalWorkouts}</p>
+					<p class="text-3xl font-bold text-accent-500">{totalWorkouts}</p>
 					<p class="text-sm text-zinc-400 mt-0.5">Workouts</p>
 				</div>
 				<div class="rounded-2xl bg-zinc-900 p-4">
-					<p class="text-3xl font-bold text-orange-500">{formatDuration(totalTimeSec)}</p>
+					<p class="text-3xl font-bold text-accent-500">{formatDuration(totalTimeSec)}</p>
 					<p class="text-sm text-zinc-400 mt-0.5">Total Time</p>
 				</div>
 				<div class="rounded-2xl bg-zinc-900 p-4">
-					<p class="text-3xl font-bold text-orange-500">{formatVolume(totalVolume)}</p>
+					<p class="text-3xl font-bold text-accent-500">{formatVolume(totalVolume)}</p>
 					<p class="text-sm text-zinc-400 mt-0.5">Volume Lifted</p>
 				</div>
 				<div class="rounded-2xl bg-zinc-900 p-4">
-					<p class="text-3xl font-bold text-orange-500">{totalSets}</p>
+					<p class="text-3xl font-bold text-accent-500">{totalSets}</p>
 					<p class="text-sm text-zinc-400 mt-0.5">Sets Completed</p>
 				</div>
 			</div>
@@ -408,15 +408,15 @@
 				</div>
 				<div class="mt-4 grid grid-cols-3 gap-3">
 					<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-						<p class="text-2xl font-bold text-orange-500">{freqAvg}</p>
+						<p class="text-2xl font-bold text-accent-500">{freqAvg}</p>
 						<p class="text-xs text-zinc-500 mt-0.5">Avg / week</p>
 					</div>
 					<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-						<p class="text-2xl font-bold text-orange-500">{freqMax}</p>
+						<p class="text-2xl font-bold text-accent-500">{freqMax}</p>
 						<p class="text-xs text-zinc-500 mt-0.5">Best week</p>
 					</div>
 					<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-						<p class="text-2xl font-bold text-orange-500">{freqActive}</p>
+						<p class="text-2xl font-bold text-accent-500">{freqActive}</p>
 						<p class="text-xs text-zinc-500 mt-0.5">Active weeks</p>
 					</div>
 				</div>
@@ -484,8 +484,8 @@
 						const pVal = pr.weight ?? pr.reps ?? pr.durationSec ?? pr.distanceM ?? 0;
 						return pVal > bVal ? pr : b;
 					})}
-						<div class="mt-4 rounded-xl bg-orange-500/10 border border-orange-500/20 p-3">
-							<p class="text-xs font-medium text-orange-400 mb-1">All-Time Best</p>
+						<div class="mt-4 rounded-xl bg-accent-500/10 border border-accent-500/20 p-3">
+							<p class="text-xs font-medium text-accent-400 mb-1">All-Time Best</p>
 							{#if best.weight && best.reps}
 								<p class="text-lg font-bold">{best.weight} kg × {best.reps} reps</p>
 								<p class="text-sm text-zinc-400">~{epley(best.weight, best.reps)} kg est. 1RM</p>
@@ -530,7 +530,7 @@
 							</div>
 							{#if b.bestOneRM}
 								<div class="text-right">
-									<p class="text-base font-bold text-orange-400">~{b.bestOneRM} kg</p>
+									<p class="text-base font-bold text-accent-400">~{b.bestOneRM} kg</p>
 									<p class="text-xs text-zinc-500">est. 1RM</p>
 								</div>
 							{/if}

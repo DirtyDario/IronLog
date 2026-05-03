@@ -10,7 +10,7 @@ function createRestTimer() {
 	const { subscribe, set, update } = writable<TimerState>({
 		running: false,
 		remaining: 0,
-		total: 90
+		total: 90 // overridden by settingsStore on init
 	});
 
 	let interval: ReturnType<typeof setInterval> | null = null;

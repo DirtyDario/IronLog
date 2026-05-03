@@ -226,7 +226,7 @@
 						editingName = false;
 					}}
 					onkeydown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-					class="w-full rounded-lg bg-zinc-800 px-2 py-1 text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-orange-500"
+					class="w-full rounded-lg bg-zinc-800 px-2 py-1 text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-accent-500"
 					autofocus
 				/>
 			{:else}
@@ -252,7 +252,7 @@
 			</button>
 			<button
 				onclick={() => (showFinishConfirm = true)}
-				class="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white active:bg-orange-600 disabled:opacity-50"
+				class="rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white active:bg-accent-600 disabled:opacity-50"
 				disabled={isFinishing}
 			>
 				Finish
@@ -296,7 +296,7 @@
 					<div class="flex-1">
 						<h2 class="font-semibold text-base">{exercise?.name ?? '...'}
 						{#if we.notes}
-							<span class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+							<span class="ml-1 inline-block w-1.5 h-1.5 rounded-full bg-accent-500"></span>
 						{/if}
 					</h2>
 						{#if summary}
@@ -357,18 +357,17 @@
 								}}
 								title={isPinned ? 'Unpin note from exercise' : 'Pin note to exercise'}
 								class="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg
-									{isPinned ? 'text-orange-500' : 'text-zinc-600 active:text-orange-400'}"
+									{isPinned ? 'text-accent-500' : 'text-zinc-600 active:text-accent-400'}"
 							>
-								{#if isPinned}
-									<!-- Solid lock (pinned) -->
+							{#if isPinned}
+									<!-- Heroicons 20/solid lock-closed -->
 									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-										<path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A3.5 3.5 0 0 1 10 2a3.5 3.5 0 0 1 3.5 3.5V9H13V5.5A3 3 0 0 0 10 2.5 3 3 0 0 0 7 5.5V9h-.5A1.5 1.5 0 0 0 5 10.5v5A1.5 1.5 0 0 0 6.5 17h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 13.5 9H13V5.5A3.5 3.5 0 0 0 10 2Z" clip-rule="evenodd" />
+										<path fill-rule="evenodd" d="M10 1C7.51472 1 5.5 3.01472 5.5 5.5V9H5C3.89543 9 3 9.89543 3 11V17C3 18.1046 3.89543 19 5 19H15C16.1046 19 17 18.1046 17 17V11C17 9.89543 16.1046 9 15 9H14.5V5.5C14.5 3.01472 12.4853 1 10 1ZM13 9V5.5C13 3.84315 11.6569 2.5 10 2.5C8.34315 2.5 7 3.84315 7 5.5V9H13Z" clip-rule="evenodd" />
 									</svg>
 								{:else}
-									<!-- Outline lock (unpinned) — simple rectangle + shackle -->
-									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="w-4 h-4">
-										<rect x="4" y="9" width="12" height="9" rx="1.5" />
-										<path d="M7 9V6.5a3 3 0 0 1 6 0V9" stroke-linecap="round"/>
+									<!-- Heroicons 20/solid lock-open -->
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+										<path fill-rule="evenodd" d="M14.5 1C12.0147 1 10 3.01472 10 5.5V9H3C1.89543 9 1 9.89543 1 11V17C1 18.1046 1.89543 19 3 19H13C14.1046 19 15 18.1046 15 17V11C15 9.89543 14.1046 9 13 9H11.5V5.5C11.5 3.84315 12.8431 2.5 14.5 2.5C16.1569 2.5 17.5 3.84315 17.5 5.5V8.25C17.5 8.66421 17.8358 9 18.25 9C18.6642 9 19 8.66421 19 8.25V5.5C19 3.01472 16.9853 1 14.5 1Z" clip-rule="evenodd" />
 									</svg>
 								{/if}
 							</button>
@@ -387,7 +386,7 @@
 							}}
 							placeholder="Notes for this exercise..."
 							rows="2"
-							class="mt-1.5 w-full rounded-xl bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+							class="mt-1.5 w-full rounded-xl bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-accent-500 resize-none"
 						></textarea>
 					{/if}
 				</div>
@@ -401,7 +400,7 @@
 								onclick={() => { activeSide[we.id] = side; }}
 								class="flex-1 rounded-lg py-1.5 text-sm font-semibold transition-colors
 									{(activeSide[we.id] ?? 'left') === side
-										? 'bg-orange-500 text-white'
+										? 'bg-accent-500 text-white'
 										: 'bg-zinc-800 text-zinc-400'}"
 							>
 								{side === 'left' ? 'Left' : 'Right'}
@@ -480,7 +479,7 @@
 			</p>
 			<div class="mt-4 flex gap-3">
 				<button onclick={() => (showFinishConfirm = false)} class="flex-1 rounded-xl border border-zinc-700 py-3 font-medium text-zinc-300">Cancel</button>
-				<button onclick={handleFinish} disabled={isFinishing} class="flex-1 rounded-xl bg-orange-500 py-3 font-bold text-white disabled:opacity-50">Finish</button>
+				<button onclick={handleFinish} disabled={isFinishing} class="flex-1 rounded-xl bg-accent-500 py-3 font-bold text-white disabled:opacity-50">Finish</button>
 			</div>
 		</div>
 	</div>

@@ -83,7 +83,7 @@
 		<h2 class="flex-1 text-lg font-semibold">Add Exercise</h2>
 		<button
 			onclick={() => (showAddCustom = !showAddCustom)}
-			class="text-sm text-orange-400 font-medium"
+			class="text-sm text-accent-400 font-medium"
 		>
 			{showAddCustom ? 'Cancel' : '+ Custom'}
 		</button>
@@ -95,7 +95,7 @@
 				type="text"
 				placeholder="Exercise name"
 				bind:value={customName}
-				class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 			/>
 			<div>
 				<p class="mb-1.5 text-xs font-medium text-zinc-500">Muscle Group</p>
@@ -105,7 +105,7 @@
 							onclick={() => (customMuscle = mg)}
 							class="rounded-full px-3 py-1.5 text-xs font-medium capitalize transition-colors
 								{customMuscle === mg
-								? 'bg-orange-500 text-white'
+								? 'bg-accent-500 text-white'
 								: 'bg-zinc-800 text-zinc-400 active:bg-zinc-700'}"
 						>
 							{mg}
@@ -115,7 +115,7 @@
 			</div>
 			<button
 				onclick={addCustom}
-				class="w-full rounded-xl bg-orange-500 py-3 font-semibold text-white active:bg-orange-600"
+				class="w-full rounded-xl bg-accent-500 py-3 font-semibold text-white active:bg-accent-600"
 			>
 				Add Exercise
 			</button>
@@ -128,7 +128,7 @@
 			type="search"
 			placeholder="Search exercises..."
 			bind:value={search}
-			class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+			class="w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 		/>
 	</div>
 

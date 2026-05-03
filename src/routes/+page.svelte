@@ -43,7 +43,7 @@
 		<p class="text-sm font-medium text-zinc-200">Workout discarded</p>
 		<button
 			onclick={async () => { await activeWorkout.restoreDiscarded(); goto('/workout/active'); }}
-			class="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-bold text-white active:bg-orange-600"
+			class="rounded-lg bg-accent-500 px-4 py-1.5 text-sm font-bold text-white active:bg-accent-600"
 		>
 			Undo
 		</button>
@@ -63,11 +63,11 @@
 	{#if $activeWorkout.workout}
 		<a
 			href="/workout/active"
-			class="block rounded-2xl bg-orange-500/10 border border-orange-500/30 p-4"
+			class="block rounded-2xl bg-accent-500/10 border border-accent-500/30 p-4"
 		>
 			<div class="flex items-center justify-between">
 				<div>
-					<p class="text-sm font-medium text-orange-400">Workout in progress</p>
+					<p class="text-sm font-medium text-accent-400">Workout in progress</p>
 					<p class="mt-0.5 text-lg font-semibold">
 						{$activeWorkout.workout.name ?? 'Quick Workout'}
 					</p>
@@ -75,7 +75,7 @@
 						{$activeWorkout.workoutExercises.length} exercise{$activeWorkout.workoutExercises.length !== 1 ? 's' : ''}
 					</p>
 				</div>
-				<div class="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white">
+				<div class="rounded-full bg-accent-500 px-4 py-2 text-sm font-semibold text-white">
 					Resume →
 				</div>
 			</div>
@@ -84,7 +84,7 @@
 		<div class="flex flex-col gap-3">
 			<button
 				onclick={async () => { await activeWorkout.start(); goto('/workout/active'); }}
-				class="w-full rounded-2xl bg-orange-500 py-5 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
+				class="w-full rounded-2xl bg-accent-500 py-5 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
 			>
 				+ Start Workout
 			</button>

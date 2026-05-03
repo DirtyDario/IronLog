@@ -76,7 +76,7 @@
 		<h1 class="text-3xl font-bold tracking-tight">Routines</h1>
 		<button
 			onclick={() => (showCreate = !showCreate)}
-			class="rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white active:bg-orange-600"
+			class="rounded-xl bg-accent-500 px-3 py-2 text-sm font-semibold text-white active:bg-accent-600"
 		>
 			+ New
 		</button>
@@ -88,11 +88,11 @@
 				type="text"
 				placeholder="Routine name (e.g. Push Day)"
 				bind:value={newRoutineName}
-				class="flex-1 rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				class="flex-1 rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 			/>
 			<button
 				onclick={createRoutine}
-				class="rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white active:bg-orange-600"
+				class="rounded-xl bg-accent-500 px-4 py-3 font-semibold text-white active:bg-accent-600"
 			>
 				Save
 			</button>
@@ -121,7 +121,7 @@
 					<div class="flex gap-2">
 						<button
 							onclick={() => startFromRoutine(routine.id, routine.name)}
-							class="flex-1 rounded-xl bg-orange-500 py-3 text-sm font-bold text-white active:bg-orange-600"
+							class="flex-1 rounded-xl bg-accent-500 py-3 text-sm font-bold text-white active:bg-accent-600"
 						>
 							Start Workout
 						</button>

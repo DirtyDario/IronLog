@@ -68,7 +68,7 @@
 		<h1 class="text-3xl font-bold tracking-tight">Exercises</h1>
 		<button
 			onclick={() => (showAdd = !showAdd)}
-			class="rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white active:bg-orange-600"
+			class="rounded-xl bg-accent-500 px-3 py-2 text-sm font-semibold text-white active:bg-accent-600"
 		>
 			+ Add
 		</button>
@@ -80,7 +80,7 @@
 				type="text"
 				placeholder="Exercise name"
 				bind:value={newName}
-				class="rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				class="rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 			/>
 			<div class="grid grid-cols-2 gap-2">
 				<select bind:value={newType} class="rounded-xl bg-zinc-800 px-3 py-2.5 text-sm focus:outline-none">
@@ -96,10 +96,10 @@
 				</select>
 			</div>
 			<label class="flex items-center gap-2 text-sm text-zinc-300">
-				<input type="checkbox" bind:checked={newIsUnilateral} class="rounded accent-orange-500" />
+				<input type="checkbox" bind:checked={newIsUnilateral} class="rounded accent-accent-500" />
 				One-arm / One-leg (track L/R separately)
 			</label>
-			<button onclick={addCustom} class="w-full rounded-xl bg-orange-500 py-3 font-semibold text-white active:bg-orange-600">
+			<button onclick={addCustom} class="w-full rounded-xl bg-accent-500 py-3 font-semibold text-white active:bg-accent-600">
 				Save Exercise
 			</button>
 		</div>
@@ -109,7 +109,7 @@
 		type="search"
 		placeholder="Search..."
 		bind:value={search}
-		class="mb-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+		class="mb-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 	/>
 
 	<div class="flex flex-col gap-2">
@@ -128,7 +128,7 @@
 						onclick={() => toggleUnilateral(exercise)}
 						title={exercise.isUnilateral ? 'Disable L/R tracking' : 'Enable L/R tracking'}
 						class="text-xs font-bold px-2 py-1 rounded-lg active:bg-zinc-800
-							{exercise.isUnilateral ? 'text-orange-500' : 'text-zinc-600'}"
+							{exercise.isUnilateral ? 'text-accent-500' : 'text-zinc-600'}"
 					>
 						L|R
 					</button>

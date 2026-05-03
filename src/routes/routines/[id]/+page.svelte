@@ -121,7 +121,7 @@
 		<h1 class="text-2xl font-bold">{routine?.name ?? 'Routine'}</h1>
 		<button
 			onclick={() => (showPicker = true)}
-			class="rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white active:bg-orange-600"
+			class="rounded-xl bg-accent-500 px-3 py-2 text-sm font-semibold text-white active:bg-accent-600"
 		>
 			+ Exercise
 		</button>
@@ -180,7 +180,7 @@
 										parseInt((e.target as HTMLInputElement).value) || 1,
 										item.re.targetReps ?? 10
 									)}
-								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
+								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-accent-500"
 							/>
 						</div>
 						<div>
@@ -196,7 +196,7 @@
 										item.re.targetSets ?? 3,
 										parseInt((e.target as HTMLInputElement).value) || 1
 									)}
-								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-orange-500"
+								class="w-full rounded-xl bg-zinc-800 px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-accent-500"
 							/>
 						</div>
 					</div>

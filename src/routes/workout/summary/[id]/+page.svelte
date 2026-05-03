@@ -169,7 +169,7 @@
 		{#if workout}
 			<p class="mt-1 text-zinc-400">{formatDate(workout.date)}</p>
 			{#if workout.name}
-				<p class="mt-0.5 text-sm font-semibold text-orange-400">{workout.name}</p>
+				<p class="mt-0.5 text-sm font-semibold text-accent-400">{workout.name}</p>
 			{/if}
 		{/if}
 	</div>
@@ -177,15 +177,15 @@
 	<!-- Stats bar -->
 	<div class="grid grid-cols-3 gap-3">
 		<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-			<p class="text-xl font-bold text-orange-500">{formatDuration(workout?.durationSec)}</p>
+			<p class="text-xl font-bold text-accent-500">{formatDuration(workout?.durationSec)}</p>
 			<p class="text-xs text-zinc-500 mt-0.5">Duration</p>
 		</div>
 		<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-			<p class="text-xl font-bold text-orange-500">{totalSets}</p>
+			<p class="text-xl font-bold text-accent-500">{totalSets}</p>
 			<p class="text-xs text-zinc-500 mt-0.5">Sets</p>
 		</div>
 		<div class="rounded-2xl bg-zinc-900 p-3 text-center">
-			<p class="text-xl font-bold text-orange-500">{formatVolSummary(totalVolume)}</p>
+			<p class="text-xl font-bold text-accent-500">{formatVolSummary(totalVolume)}</p>
 			<p class="text-xs text-zinc-500 mt-0.5">Volume</p>
 		</div>
 	</div>
@@ -254,7 +254,7 @@
 						<span class="text-xs text-zinc-400">Best set</span>
 						<div class="text-right">
 							<span class="text-sm font-semibold">{formatSet(s.bestSet, s.exercise.type)}</span>
-							<span class="ml-2 text-xs text-orange-400">~{s.bestOneRM} kg 1RM</span>
+							<span class="ml-2 text-xs text-accent-400">~{s.bestOneRM} kg 1RM</span>
 						</div>
 					</div>
 				{/if}
@@ -266,7 +266,7 @@
 	<div class="flex flex-col gap-2 pt-2">
 		<button
 			onclick={() => goto('/')}
-			class="w-full rounded-2xl bg-orange-500 py-4 text-base font-bold text-white active:bg-orange-600"
+			class="w-full rounded-2xl bg-accent-500 py-4 text-base font-bold text-white active:bg-accent-600"
 		>
 			Done
 		</button>
@@ -305,7 +305,7 @@
 				type="text"
 				bind:value={routineName}
 				placeholder="Routine Name"
-				class="mt-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-orange-500"
+				class="mt-4 w-full rounded-xl bg-zinc-800 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-accent-500"
 				autofocus
 			/>
 			<div class="mt-4 flex gap-3">
@@ -318,7 +318,7 @@
 				<button
 					onclick={handleSaveAsRoutine}
 					disabled={!routineName.trim()}
-					class="flex-1 rounded-xl bg-orange-500 py-3 font-bold text-white disabled:opacity-50"
+					class="flex-1 rounded-xl bg-accent-500 py-3 font-bold text-white disabled:opacity-50"
 				>
 					Speichern
 				</button>

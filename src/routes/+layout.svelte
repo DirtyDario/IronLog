@@ -8,6 +8,8 @@
 	import { syncNow } from '$lib/services/sync';
 	import { activeWorkout } from '$lib/stores/activeWorkout';
 	import { recomputeAllPRs } from '$lib/services/pr';
+	import { settings } from '$lib/stores/settings';
+	import { restTimer } from '$lib/stores/restTimer';
 	import { get } from 'svelte/store';
 	let { children } = $props();
 
@@ -20,6 +22,11 @@
 	});
 
 	onMount(() => {
+		// Apply persisted accent color + other settings immediately
+		settings.init();
+		// Wire rest timer default from settings
+		restTimer.setTotal(get(settings).restTimerDefault);
+
 		// H16: onMount must return a sync cleanup fn (not async).
 		// All async work is fired-and-forgotten inside, cleanup fn is returned synchronously.
 		let authUnsub: (() => void) | null = null;
@@ -84,7 +91,7 @@
 		{ href: '/routines', label: 'Routines', icon: '📋' },
 		{ href: '/exercises', label: 'Exercises', icon: '💪' },
 		{ href: '/stats', label: 'Stats', icon: '📈' },
-		{ href: '/settings', label: 'Account', icon: '👤' }
+		{ href: '/settings', label: 'Settings', icon: '⚙️' }
 	];
 
 	function isActive(href: string, pathname: string) {
@@ -100,7 +107,7 @@
 				href={tab.href}
 				class="flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-xs
 					{isActive(tab.href, $page.url.pathname)
-					? 'text-orange-500'
+					? 'text-accent-500'
 					: 'text-zinc-500'}"
 			>
 				<span class="text-xl leading-none">{tab.icon}</span>

@@ -123,7 +123,7 @@
 				bind:value={weight}
 				onblur={() => onChange({ weight: parseFloat(weight) || undefined })}
 				disabled={set.completed}
-				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
+				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:text-zinc-500"
 			/>
 			<input
 				type="text"
@@ -135,7 +135,7 @@
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
-				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
+				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:text-zinc-500"
 			/>
 		{:else if exerciseType === 'bodyweightReps'}
 			<input
@@ -148,7 +148,7 @@
 				bind:value={reps}
 				onblur={() => onChange({ reps: parseInt(reps) || undefined })}
 				disabled={set.completed}
-				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
+				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:text-zinc-500"
 			/>
 		{:else if exerciseType === 'time'}
 			<input
@@ -161,7 +161,7 @@
 				bind:value={durationSec}
 				onblur={() => onChange({ durationSec: parseInt(durationSec) || undefined })}
 				disabled={set.completed}
-				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
+				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:text-zinc-500"
 			/>
 		{:else if exerciseType === 'distance'}
 			<input
@@ -174,7 +174,7 @@
 				bind:value={distanceKm}
 				onblur={() => onChange({ distanceM: parseFloat(distanceKm) ? parseFloat(distanceKm) * 1000 : undefined })}
 				disabled={set.completed}
-				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:text-zinc-500"
+				class="w-0 flex-1 rounded-lg bg-zinc-800 py-2.5 text-center text-base font-medium focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:text-zinc-500"
 			/>
 		{/if}
 	</div>
@@ -188,7 +188,7 @@
 	{:else}
 		<button
 			onclick={handleComplete}
-			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 active:bg-orange-500 active:text-white transition-colors"
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 active:bg-accent-500 active:text-white transition-colors"
 			aria-label="Complete set"
 		>✓</button>
 	{/if}
