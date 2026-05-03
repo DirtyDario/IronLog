@@ -54,6 +54,13 @@
 		schedulePush();
 		exercises = exercises.filter((e) => e.id !== id);
 	}
+
+	async function toggleUnilateral(exercise: Exercise) {
+		const updated = !exercise.isUnilateral;
+		await db.exercises.update(exercise.id, { isUnilateral: updated, _synced: false, _lastModified: Date.now() });
+		schedulePush();
+		exercises = exercises.map((e) => e.id === exercise.id ? { ...e, isUnilateral: updated } : e);
+	}
 </script>
 
 <div class="p-4 pt-4 pb-8">
@@ -90,7 +97,7 @@
 			</div>
 			<label class="flex items-center gap-2 text-sm text-zinc-300">
 				<input type="checkbox" bind:checked={newIsUnilateral} class="rounded accent-orange-500" />
-				Einarmig / Einbeinig (L/R getrennt tracken)
+				One-arm / One-leg (track L/R separately)
 			</label>
 			<button onclick={addCustom} class="w-full rounded-xl bg-orange-500 py-3 font-semibold text-white active:bg-orange-600">
 				Save Exercise
@@ -116,14 +123,24 @@
 						 exercise.type === 'time' ? 'time' : 'distance'}
 					</p>
 				</div>
-				{#if exercise.isCustom}
+				<div class="flex items-center gap-1">
 					<button
-						onclick={() => deleteExercise(exercise.id)}
-						class="text-xs text-red-500 font-medium px-2 py-1 rounded-lg active:bg-zinc-800"
+						onclick={() => toggleUnilateral(exercise)}
+						title={exercise.isUnilateral ? 'Disable L/R tracking' : 'Enable L/R tracking'}
+						class="text-xs font-bold px-2 py-1 rounded-lg active:bg-zinc-800
+							{exercise.isUnilateral ? 'text-orange-500' : 'text-zinc-600'}"
 					>
-						Delete
+						L|R
 					</button>
-				{/if}
+					{#if exercise.isCustom}
+						<button
+							onclick={() => deleteExercise(exercise.id)}
+							class="text-xs text-red-500 font-medium px-2 py-1 rounded-lg active:bg-zinc-800"
+						>
+							Delete
+						</button>
+					{/if}
+				</div>
 			</div>
 		{/each}
 	</div>
