@@ -5,12 +5,12 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'bench-press', name: 'Bench Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'incline-bench', name: 'Incline Bench Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'decline-bench', name: 'Decline Bench Press', type: 'weightReps', muscleGroup: 'chest' },
-	{ id: 'db-bench-press', name: 'Dumbbell Bench Press', type: 'weightReps', muscleGroup: 'chest', isUnilateral: true },
-	{ id: 'db-incline-press', name: 'Incline Dumbbell Press', type: 'weightReps', muscleGroup: 'chest', isUnilateral: true },
+	{ id: 'db-bench-press', name: 'Dumbbell Bench Press', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-incline-press', name: 'Incline Dumbbell Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'db-decline-press', name: 'Decline Dumbbell Press', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'db-pullover', name: 'Dumbbell Pullover', type: 'weightReps', muscleGroup: 'chest' },
-	{ id: 'dumbbell-fly', name: 'Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest', isUnilateral: true },
-	{ id: 'db-incline-fly', name: 'Incline Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest', isUnilateral: true },
+	{ id: 'dumbbell-fly', name: 'Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
+	{ id: 'db-incline-fly', name: 'Incline Dumbbell Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'cable-fly', name: 'Cable Fly', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'chest-fly-machine', name: 'Chest Fly Machine', type: 'weightReps', muscleGroup: 'chest' },
 	{ id: 'decline-chest-machine', name: 'Decline Chest Press Machine', type: 'weightReps', muscleGroup: 'chest' },
@@ -22,53 +22,32 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'pullup', name: 'Pull-Up', type: 'bodyweightReps', muscleGroup: 'back' },
 	{ id: 'chinup', name: 'Chin-Up', type: 'bodyweightReps', muscleGroup: 'back' },
 	{ id: 'barbell-row', name: 'Barbell Row', type: 'weightReps', muscleGroup: 'back' },
-	{ id: 'dumbbell-row', name: 'Dumbbell Row', type: 'weightReps', muscleGroup: 'back', isUnilateral: true },
+	{ id: 'dumbbell-row', name: 'Dumbbell Row', type: 'weightReps', muscleGroup: 'back' },
 	{ id: 'lat-pulldown', name: 'Lat Pulldown', type: 'weightReps', muscleGroup: 'back' },
 	{ id: 'seated-cable-row', name: 'Seated Cable Row', type: 'weightReps', muscleGroup: 'back' },
 	{ id: 'tbar-row', name: 'T-Bar Row', type: 'weightReps', muscleGroup: 'back' },
 
 	// Shoulders
 	{ id: 'overhead-press', name: 'Overhead Press', type: 'weightReps', muscleGroup: 'shoulders' },
-	{
-		id: 'dumbbell-shoulder-press',
-		name: 'Dumbbell Shoulder Press',
-		type: 'weightReps',
-		muscleGroup: 'shoulders',
-		isUnilateral: true
-	},
-	{
-		id: 'shoulder-press-machine',
-		name: 'Shoulder Press Machine',
-		type: 'weightReps',
-		muscleGroup: 'shoulders'
-	},
-	{ id: 'lateral-raise', name: 'Lateral Raise', type: 'weightReps', muscleGroup: 'shoulders', isUnilateral: true },
-	{ id: 'front-raise', name: 'Front Raise', type: 'weightReps', muscleGroup: 'shoulders', isUnilateral: true },
+	{ id: 'dumbbell-shoulder-press', name: 'Dumbbell Shoulder Press', type: 'weightReps', muscleGroup: 'shoulders' },
+	{ id: 'shoulder-press-machine', name: 'Shoulder Press Machine', type: 'weightReps', muscleGroup: 'shoulders' },
+	{ id: 'lateral-raise', name: 'Lateral Raise', type: 'weightReps', muscleGroup: 'shoulders' },
+	{ id: 'front-raise', name: 'Front Raise', type: 'weightReps', muscleGroup: 'shoulders' },
 	{ id: 'face-pull', name: 'Face Pull', type: 'weightReps', muscleGroup: 'shoulders' },
 	{ id: 'upright-row', name: 'Upright Row', type: 'weightReps', muscleGroup: 'shoulders' },
 
 	// Biceps
 	{ id: 'barbell-curl', name: 'Barbell Curl', type: 'weightReps', muscleGroup: 'biceps' },
-	{ id: 'dumbbell-curl', name: 'Dumbbell Curl', type: 'weightReps', muscleGroup: 'biceps', isUnilateral: true },
-	{ id: 'hammer-curl', name: 'Hammer Curl', type: 'weightReps', muscleGroup: 'biceps', isUnilateral: true },
-	{ id: 'incline-curl', name: 'Incline Curl', type: 'weightReps', muscleGroup: 'biceps', isUnilateral: true },
-	{ id: 'cable-curl', name: 'Cable Curl', type: 'weightReps', muscleGroup: 'biceps', isUnilateral: true },
-	{ id: 'preacher-curl', name: 'Preacher Curl', type: 'weightReps', muscleGroup: 'biceps', isUnilateral: true },
+	{ id: 'dumbbell-curl', name: 'Dumbbell Curl', type: 'weightReps', muscleGroup: 'biceps' },
+	{ id: 'hammer-curl', name: 'Hammer Curl', type: 'weightReps', muscleGroup: 'biceps' },
+	{ id: 'incline-curl', name: 'Incline Curl', type: 'weightReps', muscleGroup: 'biceps' },
+	{ id: 'cable-curl', name: 'Cable Curl', type: 'weightReps', muscleGroup: 'biceps' },
+	{ id: 'preacher-curl', name: 'Preacher Curl', type: 'weightReps', muscleGroup: 'biceps' },
 
 	// Triceps
 	{ id: 'tricep-pushdown', name: 'Tricep Pushdown', type: 'weightReps', muscleGroup: 'triceps' },
-	{
-		id: 'skull-crusher',
-		name: 'Skull Crusher',
-		type: 'weightReps',
-		muscleGroup: 'triceps'
-	},
-	{
-		id: 'overhead-tricep-ext',
-		name: 'Overhead Tricep Extension',
-		type: 'weightReps',
-		muscleGroup: 'triceps'
-	},
+	{ id: 'skull-crusher', name: 'Skull Crusher', type: 'weightReps', muscleGroup: 'triceps' },
+	{ id: 'overhead-tricep-ext', name: 'Overhead Tricep Extension', type: 'weightReps', muscleGroup: 'triceps' },
 	{ id: 'close-grip-bench', name: 'Close Grip Bench Press', type: 'weightReps', muscleGroup: 'triceps' },
 	{ id: 'tricep-dip', name: 'Tricep Dip', type: 'bodyweightReps', muscleGroup: 'triceps' },
 
@@ -78,15 +57,15 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 	{ id: 'leg-press', name: 'Leg Press', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'leg-extension', name: 'Leg Extension', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'leg-curl', name: 'Leg Curl', type: 'weightReps', muscleGroup: 'legs' },
-	{ id: 'lunge', name: 'Lunge', type: 'weightReps', muscleGroup: 'legs', isUnilateral: true },
-	{ id: 'bulgarian-split', name: 'Bulgarian Split Squat', type: 'weightReps', muscleGroup: 'legs', isUnilateral: true },
+	{ id: 'lunge', name: 'Lunge', type: 'weightReps', muscleGroup: 'legs' },
+	{ id: 'bulgarian-split', name: 'Bulgarian Split Squat', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'calf-raise', name: 'Calf Raise', type: 'weightReps', muscleGroup: 'legs' },
 	{ id: 'hack-squat', name: 'Hack Squat', type: 'weightReps', muscleGroup: 'legs' },
 
 	// Glutes
 	{ id: 'hip-thrust', name: 'Hip Thrust', type: 'weightReps', muscleGroup: 'glutes' },
 	{ id: 'glute-bridge', name: 'Glute Bridge', type: 'weightReps', muscleGroup: 'glutes' },
-	{ id: 'cable-kickback', name: 'Cable Kickback', type: 'weightReps', muscleGroup: 'glutes', isUnilateral: true },
+	{ id: 'cable-kickback', name: 'Cable Kickback', type: 'weightReps', muscleGroup: 'glutes' },
 	{ id: 'rdl', name: 'Romanian Deadlift', type: 'weightReps', muscleGroup: 'glutes' },
 
 	// Core
@@ -109,7 +88,16 @@ const defaultExercises: Omit<Exercise, 'isCustom'>[] = [
 ];
 
 export async function seedDefaultExercises() {
-	await db.exercises.bulkPut(
-		defaultExercises.map((e) => ({ ...e, isCustom: false }))
-	);
+	const entries = defaultExercises.map((e) => ({ ...e, isCustom: false }));
+	await db.exercises.bulkPut(entries);
+
+	// One-time migration: clear isUnilateral from built-in exercises that no longer have it.
+	// Uses a localStorage guard so it only runs once per device.
+	if (typeof localStorage !== 'undefined' && !localStorage.getItem('unilateralCleanV1')) {
+		const ids = entries.map((e) => e.id);
+		await db.exercises
+			.where('id').anyOf(ids)
+			.modify((ex) => { ex.isUnilateral = false; });
+		localStorage.setItem('unilateralCleanV1', '1');
+	}
 }
