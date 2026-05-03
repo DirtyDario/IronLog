@@ -149,24 +149,32 @@
 	// ── Placeholder cascade ────────────────────────────────────────────────────
 	// Weight cascades from previous sets in current workout → fallback last workout.
 	// Reps come only from last finished workout at same index (never cascade within workout).
-	function getPlaceholders(weId: string, setIndex: number) {
-		const sets = $activeWorkout.sets[weId] ?? [];
+	function getPlaceholders(weId: string, setIndex: number, side?: 'left' | 'right') {
+		const allCurrentSets = $activeWorkout.sets[weId] ?? [];
 		const prev = $activeWorkout.previousSets[weId];
+
+		// For unilateral exercises, scope both current and previous sets to the active side
+		const currentSets = side
+			? allCurrentSets.filter((s) => (s.side ?? 'left') === side)
+			: allCurrentSets;
+		const prevSets = side
+			? (prev?.sets ?? []).filter((s) => (s.side ?? 'left') === side)
+			: (prev?.sets ?? []);
 
 		let weight: number | undefined;
 		let reps: number | undefined;
 		let durationSec: number | undefined;
 		let distanceKm: number | undefined;
 
-		// Weight: walk backward through current workout sets
+		// Weight: walk backward through current workout sets (same side only)
 		for (let j = setIndex - 1; j >= 0; j--) {
-			const s = sets[j];
+			const s = currentSets[j];
 			if (weight == null && s.weight != null) { weight = s.weight; break; }
 		}
 
-		// All fields: fallback to last-workout same-index set
-		if (prev?.sets[setIndex]) {
-			const ps = prev.sets[setIndex];
+		// All fields: fallback to last-workout same-index, same-side set
+		if (prevSets[setIndex]) {
+			const ps = prevSets[setIndex];
 			if (weight == null && ps.weight != null) weight = ps.weight;
 			if (reps == null && ps.reps != null) reps = ps.reps;
 			if (durationSec == null && ps.durationSec != null) durationSec = ps.durationSec;
@@ -425,7 +433,7 @@
 				</div>
 
 				{#each (isUnilateral ? sets.filter((s) => (s.side ?? 'left') === (activeSide[we.id] ?? 'left')) : sets) as set, i (set.id)}
-					{@const ph = getPlaceholders(we.id, i)}
+					{@const ph = getPlaceholders(we.id, i, isUnilateral ? (activeSide[we.id] ?? 'left') : undefined)}
 					<SetRow
 						{set}
 						index={i}
