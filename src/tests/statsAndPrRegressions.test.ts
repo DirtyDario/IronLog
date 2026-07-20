@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '$lib/db/schema';
-import { getStreak, getWeeklyFrequency, getMuscleDistribution } from '$lib/services/stats';
+import {
+	getStreak,
+	getWeeklyFrequency,
+	getMuscleDistribution,
+	getExerciseProgressCounts,
+	setHasUsableData
+} from '$lib/services/stats';
 import { getBestPerBucket } from '$lib/services/pr';
 
 function daysAgo(n: number): Date {
@@ -116,5 +122,67 @@ describe('getBestPerBucket', () => {
 
 		const best = await getBestPerBucket(exId);
 		expect(best['8RM']?.weight).toBe(15);
+	});
+});
+
+describe('getExerciseProgressCounts', () => {
+	it('does not count a weightReps set as having usable data when only one of weight/reps is filled in', async () => {
+		// Bug repro: a "weightReps" exercise's Progress-tab dropdown showed
+		// "Incline Dumbbell Bench Press (7)" (i.e. 7 sessions counted as having
+		// data) yet the chart underneath rendered "No data yet for this
+		// exercise". Root cause: the count used a loose "any field present"
+		// check (weight OR reps OR ...) while the chart required BOTH weight
+		// AND reps for a weightReps exercise. A completed set with e.g. weight
+		// logged but reps left blank satisfied the loose check but not the
+		// chart's strict one.
+		const exId = crypto.randomUUID();
+		await db.exercises.add({ id: exId, name: 'Incline Dumbbell Bench Press', type: 'weightReps' } as any);
+
+		const workoutId = crypto.randomUUID();
+		await db.workouts.add({ id: workoutId, date: new Date(), finishedAt: new Date() } as any);
+
+		const weId = crypto.randomUUID();
+		await db.workoutExercises.add({ id: weId, workoutId, exerciseId: exId, order: 0 } as any);
+
+		// Completed, but only weight was ever filled in — reps left blank.
+		await db.sets.add({
+			id: crypto.randomUUID(),
+			workoutExerciseId: weId,
+			order: 0,
+			completed: true,
+			weight: 20,
+			reps: null
+		} as any);
+
+		const counts = await getExerciseProgressCounts();
+		expect(counts[exId] ?? 0).toBe(0);
+	});
+
+	it('counts a session once real weight+reps data is present, and setHasUsableData agrees per-type', async () => {
+		const exId = crypto.randomUUID();
+		await db.exercises.add({ id: exId, name: 'Incline Dumbbell Bench Press', type: 'weightReps' } as any);
+
+		const workoutId = crypto.randomUUID();
+		await db.workouts.add({ id: workoutId, date: new Date(), finishedAt: new Date() } as any);
+
+		const weId = crypto.randomUUID();
+		await db.workoutExercises.add({ id: weId, workoutId, exerciseId: exId, order: 0 } as any);
+
+		await db.sets.add({
+			id: crypto.randomUUID(),
+			workoutExerciseId: weId,
+			order: 0,
+			completed: true,
+			weight: 20,
+			reps: 10
+		} as any);
+
+		const counts = await getExerciseProgressCounts();
+		expect(counts[exId]).toBe(1);
+
+		expect(setHasUsableData({ completed: true, weight: 20, reps: null }, 'weightReps')).toBe(false);
+		expect(setHasUsableData({ completed: true, weight: 20, reps: 10 }, 'weightReps')).toBe(true);
+		expect(setHasUsableData({ completed: true, reps: 12 }, 'bodyweightReps')).toBe(true);
+		expect(setHasUsableData({ completed: false, weight: 20, reps: 10 }, 'weightReps')).toBe(false);
 	});
 });

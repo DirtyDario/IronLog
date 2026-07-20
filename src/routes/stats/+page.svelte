@@ -9,6 +9,8 @@
 		getWeeklyFrequency,
 		getMuscleDistribution,
 		getAllTimeBests,
+		getExerciseProgressCounts,
+		setHasUsableData,
 		formatDuration,
 		formatVolume,
 		type WeekCount,
@@ -103,30 +105,12 @@
 
 		// Build exercise list for Progress tab:
 		// Only show exercises that have at least one completed set with actual data written.
-		const finishedWorkouts = await db.workouts.filter((w) => !!w.finishedAt).toArray();
-		const finishedWorkoutIds = new Set(finishedWorkouts.map((w) => w.id));
-		const allWEs = await db.workoutExercises.toArray();
-		const finishedWEs = allWEs.filter((we) => finishedWorkoutIds.has(we.workoutId));
-
-		// Count by exercise: distinct finished-workout sessions with at least one
-		// completed set with a value. Grouping by (exerciseId, workoutId) — rather
-		// than counting every workoutExercise row individually — keeps this number
-		// consistent with the Progress chart, which plots one point per session.
-		const dataByExWorkout = new Map<string, Set<string>>(); // exerciseId → set of workoutIds with data
-		for (const we of finishedWEs) {
-			const hasData = await db.sets
-				.where('workoutExerciseId').equals(we.id)
-				.filter((s) => s.completed && (s.weight != null || s.reps != null || s.durationSec != null || s.distanceM != null))
-				.first();
-			if (hasData) {
-				if (!dataByExWorkout.has(we.exerciseId)) dataByExWorkout.set(we.exerciseId, new Set());
-				dataByExWorkout.get(we.exerciseId)!.add(we.workoutId);
-			}
-		}
-		const countsByEx: Record<string, number> = {};
-		for (const [exId, workoutIds] of dataByExWorkout) {
-			countsByEx[exId] = workoutIds.size;
-		}
+		//
+		// This uses the same type-aware criteria (see setHasUsableData in
+		// stats.ts) as the Progress chart itself, so the "(N)" count shown next
+		// to each exercise name can never disagree with whether the chart
+		// actually renders data for it.
+		const countsByEx = await getExerciseProgressCounts();
 		const exIds = new Set(Object.keys(countsByEx));
 		exercises = exs
 			.filter((e) => exIds.has(e.id))
@@ -193,19 +177,19 @@
 						// 95kg×12 set, showing "progress" trending the wrong way. Use
 						// estimated 1RM (Epley) per set instead, consistent with the
 						// Bests tab and PR system.
-						const sets = allSets.filter((s) => s.completed && s.weight != null && s.reps != null);
+						const sets = allSets.filter((s) => setHasUsableData(s, exType));
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => epley(s.weight!, s.reps!)));
 					} else if (exType === 'bodyweightReps') {
-						const sets = allSets.filter((s) => s.completed && s.reps != null);
+						const sets = allSets.filter((s) => setHasUsableData(s, exType));
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.reps!));
 					} else if (exType === 'time') {
-						const sets = allSets.filter((s) => s.completed && s.durationSec != null);
+						const sets = allSets.filter((s) => setHasUsableData(s, exType));
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.durationSec!));
 					} else if (exType === 'distance') {
-						const sets = allSets.filter((s) => s.completed && s.distanceM != null);
+						const sets = allSets.filter((s) => setHasUsableData(s, exType));
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.distanceM!));
 					}

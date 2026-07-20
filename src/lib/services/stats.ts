@@ -194,6 +194,59 @@ export async function getAllTimeBests(): Promise<ExerciseBest[]> {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// ── Exercise progress counts (per-session, type-aware) ──────────────────────
+
+// A single source of truth for "does this set actually have usable data for
+// this exercise's tracked type", shared by the Progress-tab exercise list
+// count and the Progress chart itself. Previously these lived as two
+// separately-written checks (one loose, one strict) in stats/+page.svelte,
+// which could disagree: a set that had e.g. weight logged but reps left
+// blank satisfied the loose "any field present" check used for the list
+// count, but not the strict "both fields present" check used by the chart —
+// so an exercise could show a nonzero count in the dropdown while the chart
+// underneath rendered "No data yet for this exercise". Both call sites now
+// use this function so they can never drift apart again.
+export function setHasUsableData(
+	set: { completed: boolean; weight?: number | null; reps?: number | null; durationSec?: number | null; distanceM?: number | null },
+	type: 'weightReps' | 'bodyweightReps' | 'time' | 'distance'
+): boolean {
+	if (!set.completed) return false;
+	if (type === 'weightReps') return set.weight != null && set.reps != null;
+	if (type === 'bodyweightReps') return set.reps != null;
+	if (type === 'time') return set.durationSec != null;
+	if (type === 'distance') return set.distanceM != null;
+	return false;
+}
+
+// Returns, for every exercise, the number of distinct finished-workout
+// sessions that have at least one set with type-appropriate usable data —
+// i.e. exactly the sessions the Progress chart would plot a point for.
+export async function getExerciseProgressCounts(): Promise<Record<string, number>> {
+	const [exercises, finishedWorkouts, allWEs] = await Promise.all([
+		db.exercises.toArray(),
+		db.workouts.filter((w) => !!w.finishedAt).toArray(),
+		db.workoutExercises.toArray()
+	]);
+	const exTypeById = new Map(exercises.map((e) => [e.id, e.type ?? 'weightReps']));
+	const finishedWorkoutIds = new Set(finishedWorkouts.map((w) => w.id));
+	const finishedWEs = allWEs.filter((we) => finishedWorkoutIds.has(we.workoutId));
+
+	const dataByExWorkout = new Map<string, Set<string>>();
+	for (const we of finishedWEs) {
+		const type = exTypeById.get(we.exerciseId) ?? 'weightReps';
+		const sets = await db.sets.where('workoutExerciseId').equals(we.id).toArray();
+		const hasData = sets.some((s) => setHasUsableData(s, type));
+		if (hasData) {
+			if (!dataByExWorkout.has(we.exerciseId)) dataByExWorkout.set(we.exerciseId, new Set());
+			dataByExWorkout.get(we.exerciseId)!.add(we.workoutId);
+		}
+	}
+
+	const counts: Record<string, number> = {};
+	for (const [exId, workoutIds] of dataByExWorkout) counts[exId] = workoutIds.size;
+	return counts;
+}
+
 export function formatDuration(sec: number): string {
 	if (sec < 60) return `${sec}s`;
 	const m = Math.floor(sec / 60);
