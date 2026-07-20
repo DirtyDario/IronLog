@@ -5,6 +5,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { schedulePush } from '$lib/services/sync';
+	import { activeWorkout } from '$lib/stores/activeWorkout';
+	import { recomputeAllPRs } from '$lib/services/pr';
 
 	let workout: Workout | null = $state(null);
 	// H1: exercise can be null if exercise was deleted — show placeholder
@@ -70,6 +72,99 @@
 	}
 
 	let showDelete = $state(false);
+	let isStarting = $state(false);
+
+	// ── Edit mode: fix forgotten/wrong sets on an already-finished workout ─────
+	let editMode = $state(false);
+	function syncMeta() {
+		return { _synced: false as const, _lastModified: Date.now() };
+	}
+
+	async function reloadExercises() {
+		if (!workout) return;
+		const wes = await db.workoutExercises.where('workoutId').equals(workout.id).sortBy('order');
+		const result = [];
+		for (const we of wes) {
+			const exercise = (await db.exercises.get(we.exerciseId)) ?? null;
+			const sets = (await db.sets.where('workoutExerciseId').equals(we.id).sortBy('order'))
+				.filter((s) => s.completed);
+			result.push({ we, exercise, sets });
+		}
+		exercises = result;
+	}
+
+	async function updateEditedSet(setId: string, type: string, field: 'weight' | 'reps' | 'durationSec' | 'distanceKm', raw: string) {
+		const changes: Partial<ExerciseSet> = {};
+		if (field === 'distanceKm') {
+			const km = parseFloat(raw);
+			changes.distanceM = km ? km * 1000 : undefined;
+		} else if (field === 'weight') {
+			changes.weight = parseFloat(raw) || undefined;
+		} else if (field === 'reps') {
+			changes.reps = parseInt(raw) || undefined;
+		} else if (field === 'durationSec') {
+			changes.durationSec = parseInt(raw) || undefined;
+		}
+		await db.sets.update(setId, { ...changes, ...syncMeta() });
+		schedulePush();
+		await reloadExercises();
+		// Edited values may change all-time bests — safe (idempotent) full recompute
+		recomputeAllPRs();
+	}
+
+	async function addForgottenSet(weId: string, side?: 'left' | 'right') {
+		const existing = await db.sets.where('workoutExerciseId').equals(weId).toArray();
+		const newSet: ExerciseSet = {
+			id: crypto.randomUUID(),
+			workoutExerciseId: weId,
+			order: existing.length,
+			side,
+			isWarmup: false,
+			completed: true,
+			...syncMeta()
+		};
+		await db.sets.add(newSet);
+		schedulePush();
+		await reloadExercises();
+	}
+
+	async function deleteEditedSet(setId: string) {
+		await db.tombstones.put({ id: setId, entity: 'set', entityId: setId, deletedAt: new Date(), _synced: false });
+		await db.sets.delete(setId);
+		schedulePush();
+		await reloadExercises();
+		recomputeAllPRs();
+	}
+
+	// Start a brand-new workout that mirrors this one: same exercises, same
+	// number of sets per exercise (and per side for unilateral exercises),
+	// with empty values so the user logs fresh numbers.
+	async function startSameWorkout() {
+		if (isStarting) return;
+		if ($activeWorkout.workout) {
+			// Bug 13 pattern: don't silently overwrite an already-active workout
+			goto('/workout/active');
+			return;
+		}
+		isStarting = true;
+		try {
+			await activeWorkout.start(workout?.name);
+			for (const { we, sets } of exercises) {
+				const newWe = await activeWorkout.addExercise(we.exerciseId);
+				if (!newWe) continue;
+				if (!sets.length) continue;
+				// Preserve per-side set counts for unilateral exercises
+				const sides = sets.map((s) => s.side);
+				for (const side of sides) {
+					await activeWorkout.addSet(newWe.id, side);
+				}
+			}
+			goto('/workout/active');
+		} finally {
+			isStarting = false;
+		}
+	}
+
 </script>
 
 <div class="p-4 pt-4 pb-8">
@@ -84,16 +179,24 @@
 				{/if}
 			{/if}
 		</div>
-		<button
-			onclick={() => (showDelete = true)}
-			class="text-sm text-red-500 font-medium mt-6"
-		>
-			Delete
-		</button>
+		<div class="flex items-center gap-3 mt-6">
+			<button
+				onclick={() => (editMode = !editMode)}
+				class="text-sm font-medium {editMode ? 'text-accent-400' : 'text-zinc-400'}"
+			>
+				{editMode ? 'Done' : 'Edit'}
+			</button>
+			<button
+				onclick={() => (showDelete = true)}
+				class="text-sm text-red-500 font-medium"
+			>
+				Delete
+			</button>
+		</div>
 	</div>
 
 	<div class="flex flex-col gap-4">
-		{#each exercises as { exercise, sets }}
+		{#each exercises as { we, exercise, sets }}
 			<div class="rounded-2xl bg-zinc-900 p-4">
 				<!-- H1: show placeholder name if exercise was deleted -->
 				<h2 class="mb-2 font-semibold {exercise ? '' : 'text-zinc-500 italic'}">
@@ -101,15 +204,98 @@
 				</h2>
 				<div class="flex flex-col gap-1">
 					{#each sets as set, i}
-						<div class="flex justify-between text-sm">
-							<span class="text-zinc-500">Set {i + 1}{#if set.side}<span class="text-xs text-zinc-500 ml-0.5">{set.side === 'left' ? 'L' : 'R'}</span>{/if}</span>
-							<span class="font-medium">{formatSet(set, exercise?.type ?? 'weightReps')}</span>
-						</div>
+						{#if editMode}
+							{@const type = exercise?.type ?? 'weightReps'}
+							<div class="flex items-center gap-2 py-1">
+								<span class="w-14 shrink-0 text-xs text-zinc-500">
+									Set {i + 1}{#if set.side}<span class="ml-0.5">{set.side === 'left' ? 'L' : 'R'}</span>{/if}
+								</span>
+								<div class="flex flex-1 gap-2">
+									{#if type === 'weightReps'}
+										<input
+											type="text" inputmode="decimal"
+											value={set.weight ?? ''}
+											onblur={(e) => updateEditedSet(set.id, type, 'weight', (e.target as HTMLInputElement).value)}
+											placeholder="kg"
+											class="w-0 flex-1 rounded-lg bg-zinc-800 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+										/>
+										<input
+											type="text" inputmode="numeric"
+											value={set.reps ?? ''}
+											onblur={(e) => updateEditedSet(set.id, type, 'reps', (e.target as HTMLInputElement).value)}
+											placeholder="reps"
+											class="w-0 flex-1 rounded-lg bg-zinc-800 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+										/>
+									{:else if type === 'bodyweightReps'}
+										<input
+											type="text" inputmode="numeric"
+											value={set.reps ?? ''}
+											onblur={(e) => updateEditedSet(set.id, type, 'reps', (e.target as HTMLInputElement).value)}
+											placeholder="reps"
+											class="w-0 flex-1 rounded-lg bg-zinc-800 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+										/>
+									{:else if type === 'time'}
+										<input
+											type="text" inputmode="numeric"
+											value={set.durationSec ?? ''}
+											onblur={(e) => updateEditedSet(set.id, type, 'durationSec', (e.target as HTMLInputElement).value)}
+											placeholder="sec"
+											class="w-0 flex-1 rounded-lg bg-zinc-800 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+										/>
+									{:else}
+										<input
+											type="text" inputmode="decimal"
+											value={set.distanceM ? (set.distanceM / 1000) : ''}
+											onblur={(e) => updateEditedSet(set.id, type, 'distanceKm', (e.target as HTMLInputElement).value)}
+											placeholder="km"
+											class="w-0 flex-1 rounded-lg bg-zinc-800 py-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
+										/>
+									{/if}
+								</div>
+								<button
+									onclick={() => deleteEditedSet(set.id)}
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-600 active:bg-zinc-800 active:text-red-400"
+									aria-label="Delete set"
+								>✕</button>
+							</div>
+						{:else}
+							<div class="flex justify-between text-sm">
+								<span class="text-zinc-500">Set {i + 1}{#if set.side}<span class="text-xs text-zinc-500 ml-0.5">{set.side === 'left' ? 'L' : 'R'}</span>{/if}</span>
+								<span class="font-medium">{formatSet(set, exercise?.type ?? 'weightReps')}</span>
+							</div>
+						{/if}
 					{/each}
 				</div>
+				{#if editMode}
+					<div class="mt-2 flex gap-2">
+						<button
+							onclick={() => addForgottenSet(we.id)}
+							class="flex-1 rounded-xl border border-dashed border-zinc-700 py-2 text-xs text-zinc-400 active:bg-zinc-800"
+						>
+							+ {exercise?.isUnilateral ? 'Left ' : ''}Set
+						</button>
+						{#if exercise?.isUnilateral}
+							<button
+								onclick={() => addForgottenSet(we.id, 'right')}
+								class="flex-1 rounded-xl border border-dashed border-zinc-700 py-2 text-xs text-zinc-400 active:bg-zinc-800"
+							>
+								+ Right Set
+							</button>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
+
+
+	<button
+		onclick={startSameWorkout}
+		disabled={isStarting}
+		class="mt-4 w-full rounded-2xl bg-accent-500 py-4 text-base font-bold text-white active:bg-accent-600 disabled:opacity-50"
+	>
+		{isStarting ? 'Starting...' : '↻ Start Same Workout'}
+	</button>
 </div>
 
 {#if showDelete}

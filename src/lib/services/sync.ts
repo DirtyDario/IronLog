@@ -199,6 +199,7 @@ async function pushUnsynced(userId: string) {
 			distance_m: s.distanceM ?? null,
 			is_warmup: s.isWarmup,
 			completed: s.completed,
+			side: s.side ?? null,
 			notes: s.notes ?? null,
 			updated_at: new Date((s as any)._lastModified ?? Date.now()).toISOString()
 		}));
@@ -377,6 +378,7 @@ async function pullChanges(userId: string) {
 				distanceM: r.distance_m ?? undefined,
 				isWarmup: r.is_warmup === true,  // coerce nullable bool
 				completed: r.completed === true,  // coerce nullable bool
+				side: r.side ?? undefined,
 				notes: r.notes ?? undefined,
 				_synced: true,
 				_lastModified: remoteTs

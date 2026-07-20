@@ -14,9 +14,12 @@
 		onChange: (changes: Partial<ExerciseSet>) => void;
 		onDelete: () => void;
 		// Parent registers a getValues fn to read current inputs on finish
-		onRegister?: (getValues: () => ResolvedValues | null) => void;
+		onRegister?: (getValues: () => ResolvedValues | null, hasPartialInput: () => boolean) => void;
 		// S10: parent unregisters when set is destroyed
 		onUnregister?: () => void;
+		// Parent tells us this set was flagged as having unsaved partial input
+		// (e.g. weight typed but no reps) so we can show a red border.
+		flagIncomplete?: boolean;
 	}
 
 	export interface ResolvedValues {
@@ -39,7 +42,8 @@
 		onChange,
 		onDelete,
 		onRegister,
-		onUnregister
+		onUnregister,
+		flagIncomplete = false
 	}: Props = $props();
 
 	let weight = $state('');
@@ -62,9 +66,23 @@
 	// Register getValues with parent so finish() can collect all inputs
 	// S10/H17: return cleanup fn so parent can unregister when component is destroyed
 	$effect(() => {
-		onRegister?.(() => getResolvedValues());
+		onRegister?.(() => getResolvedValues(), () => hasPartialInput());
 		return () => onUnregister?.();
 	});
+
+	/**
+	 * True when the user typed something into at least one field but the set
+	 * is neither completed nor would be auto-completed on finish (e.g. weight
+	 * entered but reps left blank for a weightReps exercise). Used to warn
+	 * before finishing a workout, since this input would otherwise be silently
+	 * discarded.
+	 */
+	function hasPartialInput(): boolean {
+		if (set.completed) return false;
+		const anyTyped = weight.trim() !== '' || reps.trim() !== '' || durationSec.trim() !== '' || distanceKm.trim() !== '';
+		if (!anyTyped) return false;
+		return getResolvedValues() === null;
+	}
 
 	/**
 	 * Resolve the current input state into final values.
@@ -108,7 +126,7 @@
 	}
 </script>
 
-<div class="flex items-center gap-2 py-1 {set.completed ? 'opacity-50' : ''}">
+<div class="flex items-center gap-2 py-1 {set.completed ? 'opacity-50' : ''} {flagIncomplete ? 'rounded-lg ring-2 ring-red-500' : ''}">
 	<span class="w-6 shrink-0 text-center text-sm font-medium text-zinc-400">{index + 1}</span>
 
 	<div class="flex flex-1 gap-2">

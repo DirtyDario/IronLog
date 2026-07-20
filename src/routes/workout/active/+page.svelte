@@ -95,14 +95,19 @@
 
 	// Registry: setId → getValues fn registered by each SetRow
 	const setValueRegistry = new Map<string, () => ResolvedValues | null>();
+	// Registry: setId → hasPartialInput fn (true when a field was typed but the
+	// set won't be auto-completed on finish, e.g. weight without reps)
+	const partialInputRegistry = new Map<string, () => boolean>();
 
-	function registerSet(setId: string, getFn: () => ResolvedValues | null) {
+	function registerSet(setId: string, getFn: () => ResolvedValues | null, hasPartialFn: () => boolean) {
 		setValueRegistry.set(setId, getFn);
+		partialInputRegistry.set(setId, hasPartialFn);
 	}
 
 	// S10: clean up registry when a set is deleted
 	function unregisterSet(setId: string) {
 		setValueRegistry.delete(setId);
+		partialInputRegistry.delete(setId);
 	}
 
 	// Notes toggle state per exercise
@@ -123,6 +128,44 @@
 
 	// H8: guard against double-tap finish
 	let isFinishing = $state(false);
+
+	// Set ids with unsaved partial input (e.g. kg typed but no reps) — shown with a red border
+	let flaggedSetIds = $state<Set<string>>(new Set());
+	let showPartialInputWarning = $state(false);
+
+	function findPartialInputSets(): string[] {
+		const ids: string[] = [];
+		for (const [setId, hasPartialFn] of partialInputRegistry) {
+			if (hasPartialFn()) ids.push(setId);
+		}
+		return ids;
+	}
+
+	// Entry point for the "Finish" button — checks for partial/unsaved input first
+	function requestFinish() {
+		const partialIds = findPartialInputSets();
+		if (partialIds.length > 0) {
+			flaggedSetIds = new Set(partialIds);
+			// If a flagged set is on the inactive L/R side, switch to it so the
+			// red-bordered set is actually visible to the user.
+			for (const [weId, weSets] of Object.entries($activeWorkout.sets)) {
+				for (const s of weSets) {
+					if (flaggedSetIds.has(s.id) && s.side) {
+						activeSide[weId] = s.side;
+					}
+				}
+			}
+			showPartialInputWarning = true;
+			return;
+		}
+		showFinishConfirm = true;
+	}
+
+	// Called when the user confirms they want to finish despite partial input
+	function confirmDespitePartialInput() {
+		showPartialInputWarning = false;
+		showFinishConfirm = true;
+	}
 
 	async function handleFinish() {
 		const workoutId = $activeWorkout.workout?.id;
@@ -259,7 +302,7 @@
 				Discard
 			</button>
 			<button
-				onclick={() => (showFinishConfirm = true)}
+				onclick={requestFinish}
 				class="rounded-xl bg-accent-500 px-4 py-2 text-sm font-semibold text-white active:bg-accent-600 disabled:opacity-50"
 				disabled={isFinishing}
 			>
@@ -432,22 +475,37 @@
 					<span></span>
 				</div>
 
-				{#each (isUnilateral ? sets.filter((s) => (s.side ?? 'left') === (activeSide[we.id] ?? 'left')) : sets) as set, i (set.id)}
-					{@const ph = getPlaceholders(we.id, i, isUnilateral ? (activeSide[we.id] ?? 'left') : undefined)}
-					<SetRow
-						{set}
-						index={i}
-						exerciseType={exercise?.type ?? 'weightReps'}
-						placeholderWeight={ph.weight}
-						placeholderReps={ph.reps}
-						placeholderDurationSec={ph.durationSec}
-						placeholderDistanceKm={ph.distanceKm}
-						onComplete={(resolved) => handleSetComplete(set, we.id, we.exerciseId, resolved)}
-						onRegister={(getFn) => registerSet(set.id, getFn)}
-						onUnregister={() => unregisterSet(set.id)}
-						onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
-						onDelete={() => { unregisterSet(set.id); activeWorkout.deleteSet(set.id, we.id); }}
-					/>
+				<!-- Bug fix: for unilateral exercises, keep BOTH sides' SetRows mounted at all times
+				     and only hide the inactive side with CSS. Previously the inactive side's sets
+				     were filtered out of the {#each} entirely, which destroyed those SetRow
+				     components (and their onRegister callback) whenever the user switched tabs.
+				     That caused two bugs: (1) typed-but-not-yet-completed values on the side you
+				     switched away from were silently lost when finishing the workout, and
+				     (2) switching tabs removed focused DOM nodes, making the page jump to the
+				     top and get covered by the sticky rest-timer bar. Keeping everything mounted
+				     fixes both. -->
+				{#each sets as set, i (set.id)}
+					{@const side = set.side ?? 'left'}
+					{@const isActiveSide = !isUnilateral || side === (activeSide[we.id] ?? 'left')}
+					{@const sideIndex = isUnilateral ? sets.filter((s) => (s.side ?? 'left') === side).findIndex((s) => s.id === set.id) : i}
+					{@const ph = getPlaceholders(we.id, sideIndex, isUnilateral ? side : undefined)}
+					<div class={isActiveSide ? '' : 'hidden'}>
+						<SetRow
+							{set}
+							index={sideIndex}
+							exerciseType={exercise?.type ?? 'weightReps'}
+							placeholderWeight={ph.weight}
+							placeholderReps={ph.reps}
+							placeholderDurationSec={ph.durationSec}
+							placeholderDistanceKm={ph.distanceKm}
+							flagIncomplete={flaggedSetIds.has(set.id)}
+							onComplete={(resolved) => handleSetComplete(set, we.id, we.exerciseId, resolved)}
+							onRegister={(getFn, hasPartialFn) => registerSet(set.id, getFn, hasPartialFn)}
+							onUnregister={() => unregisterSet(set.id)}
+							onChange={(changes) => activeWorkout.updateSet(set.id, we.id, changes)}
+							onDelete={() => { unregisterSet(set.id); activeWorkout.deleteSet(set.id, we.id); }}
+						/>
+					</div>
 				{/each}
 
 				<button
@@ -476,6 +534,32 @@
 		}}
 		onClose={() => (showPicker = false)}
 	/>
+{/if}
+
+{#if showPartialInputWarning}
+	<div class="fixed inset-0 z-50 flex items-end bg-black/60 p-4">
+		<div class="w-full rounded-2xl bg-zinc-900 p-6">
+			<h2 class="text-xl font-bold">Unvollständige Eingabe</h2>
+			<p class="mt-1 text-sm text-zinc-400">
+				Mindestens ein Feld (z. B. kg) wurde ausgefüllt, aber der Satz wurde nicht abgeschlossen —
+				die Werte sind rot markiert und gehen sonst verloren. Wirklich beenden?
+			</p>
+			<div class="mt-4 flex gap-3">
+				<button
+					onclick={() => (showPartialInputWarning = false)}
+					class="flex-1 rounded-xl border border-zinc-700 py-3 font-medium text-zinc-300"
+				>
+					Zurück
+				</button>
+				<button
+					onclick={confirmDespitePartialInput}
+					class="flex-1 rounded-xl bg-red-600 py-3 font-bold text-white"
+				>
+					Trotzdem beenden
+				</button>
+			</div>
+		</div>
+	</div>
 {/if}
 
 {#if showFinishConfirm}
