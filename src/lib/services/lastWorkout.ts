@@ -26,22 +26,38 @@ export async function getLastFinishedSetsFor(exerciseId: string): Promise<LastWo
 
 	if (!workouts.length) return null;
 
-	// Most recent finished workout
-	const latest = workouts.sort(
-		(a, b) => new Date(b.finishedAt!).getTime() - new Date(a.finishedAt!).getTime()
-	)[0];
+	// Walk workouts newest → oldest and use the first one that actually has
+	// completed set data for this exercise. Bug fix: previously we only ever
+	// looked at the single most-recent workout containing this exercise — if
+	// that particular session had the exercise added but no completed sets
+	// (e.g. added then abandoned, or a duplicate empty row from removing and
+	// re-adding it), the placeholder/"last time" data silently disappeared
+	// even though a real, fully-logged session existed a bit further back.
+	// This is also why the Stats → Progress chart looked "empty" for some
+	// exercises but not others — same underlying data-selection bug.
+	workouts.sort((a, b) => new Date(b.finishedAt!).getTime() - new Date(a.finishedAt!).getTime());
 
-	// Find the workoutExercise in that workout
-	const we = wes.find((w) => w.workoutId === latest.id);
-	if (!we) return null;
+	for (const workout of workouts) {
+		// Find ALL workoutExercise rows for this exercise in that workout — a
+		// second related bug: previously used `wes.find(...)` which only grabbed
+		// the FIRST match. If the same exercise was added more than once in a
+		// single workout (e.g. removed and re-added), the first row could be an
+		// empty leftover with no completed sets while a sibling row had the
+		// real data.
+		const wesInWorkout = wes.filter((w) => w.workoutId === workout.id);
+		if (!wesInWorkout.length) continue;
 
-	// Get its sets — H7: only completed sets (uncompleted sets are not "done" data)
-	const sets = (await db.sets
-		.where('workoutExerciseId')
-		.equals(we.id)
-		.sortBy('order')).filter((s) => s.completed);
+		const setsByWe = await Promise.all(
+			wesInWorkout.map((we) => db.sets.where('workoutExerciseId').equals(we.id).sortBy('order'))
+		);
+		const sets = setsByWe.flat().filter((s) => s.completed);
 
-	return { sets, date: new Date(latest.finishedAt!), workoutName: latest.name };
+		if (sets.length) {
+			return { sets, date: new Date(workout.finishedAt!), workoutName: workout.name };
+		}
+	}
+
+	return null;
 }
 
 /**

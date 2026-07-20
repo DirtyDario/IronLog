@@ -108,16 +108,24 @@
 		const allWEs = await db.workoutExercises.toArray();
 		const finishedWEs = allWEs.filter((we) => finishedWorkoutIds.has(we.workoutId));
 
-		// Count by exercise: only count WEs that have at least one completed set with a value
-		const countsByEx: Record<string, number> = {};
+		// Count by exercise: distinct finished-workout sessions with at least one
+		// completed set with a value. Grouping by (exerciseId, workoutId) — rather
+		// than counting every workoutExercise row individually — keeps this number
+		// consistent with the Progress chart, which plots one point per session.
+		const dataByExWorkout = new Map<string, Set<string>>(); // exerciseId → set of workoutIds with data
 		for (const we of finishedWEs) {
 			const hasData = await db.sets
 				.where('workoutExerciseId').equals(we.id)
 				.filter((s) => s.completed && (s.weight != null || s.reps != null || s.durationSec != null || s.distanceM != null))
 				.first();
 			if (hasData) {
-				countsByEx[we.exerciseId] = (countsByEx[we.exerciseId] ?? 0) + 1;
+				if (!dataByExWorkout.has(we.exerciseId)) dataByExWorkout.set(we.exerciseId, new Set());
+				dataByExWorkout.get(we.exerciseId)!.add(we.workoutId);
 			}
+		}
+		const countsByEx: Record<string, number> = {};
+		for (const [exId, workoutIds] of dataByExWorkout) {
+			countsByEx[exId] = workoutIds.size;
 		}
 		const exIds = new Set(Object.keys(countsByEx));
 		exercises = exs
@@ -166,36 +174,33 @@
 
 				const sessionPoints: { date: string; value: number }[] = [];
 				for (const workout of workouts) {
-					const we = wes.find((w) => w.workoutId === workout.id);
-					if (!we) continue;
+					// Bug fix: use ALL workoutExercise rows for this exercise in this
+					// workout, not just the first match. If the exercise was added
+					// more than once in the same session (e.g. removed & re-added),
+					// `.find()` could grab an empty leftover row and hide real data
+					// for that session — this is why some exercises showed "No data
+					// yet" in Progress even though sets were logged for the workout.
+					const wesInWorkout = wes.filter((w) => w.workoutId === workout.id);
+					if (!wesInWorkout.length) continue;
+					const allSets = (
+						await Promise.all(wesInWorkout.map((we) => db.sets.where('workoutExerciseId').equals(we.id).toArray()))
+					).flat();
 
 					let maxVal = 0;
 					if (exType === 'weightReps') {
-						const sets = await db.sets
-							.where('workoutExerciseId').equals(we.id)
-							.filter((s) => s.completed && s.weight != null)
-							.toArray();
+						const sets = allSets.filter((s) => s.completed && s.weight != null);
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.weight!));
 					} else if (exType === 'bodyweightReps') {
-						const sets = await db.sets
-							.where('workoutExerciseId').equals(we.id)
-							.filter((s) => s.completed && s.reps != null)
-							.toArray();
+						const sets = allSets.filter((s) => s.completed && s.reps != null);
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.reps!));
 					} else if (exType === 'time') {
-						const sets = await db.sets
-							.where('workoutExerciseId').equals(we.id)
-							.filter((s) => s.completed && s.durationSec != null)
-							.toArray();
+						const sets = allSets.filter((s) => s.completed && s.durationSec != null);
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.durationSec!));
 					} else if (exType === 'distance') {
-						const sets = await db.sets
-							.where('workoutExerciseId').equals(we.id)
-							.filter((s) => s.completed && s.distanceM != null)
-							.toArray();
+						const sets = allSets.filter((s) => s.completed && s.distanceM != null);
 						if (!sets.length) continue;
 						maxVal = Math.max(...sets.map((s) => s.distanceM!));
 					}
