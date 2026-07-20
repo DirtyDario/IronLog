@@ -55,6 +55,10 @@
 	let selectedExId: string | null = $state(null);
 	let prs: PersonalRecord[] = $state([]);
 	let sessionData: { date: string; value: number }[] = $state([]);
+	// Temporary diagnostic surfaced in the "no data" placeholder — helps pin
+	// down exactly which stage of the Progress-tab query chain comes up empty
+	// on a real device, without needing dev tools access.
+	let progressDebug: string | null = $state(null);
 
 	// Active section
 	let activeTab = $state<'overview' | 'frequency' | 'muscles' | 'progress' | 'bests' | 'prs'>('overview');
@@ -137,69 +141,88 @@
 		if (selectedExId) {
 			sessionData = [];
 			prs = [];
+			progressDebug = null;
 			// M1: capture current seq at start of this async run
 			const seq = ++progressLoadSeq;
 			(async () => {
-				const prData = await db.personalRecords
-					.where('exerciseId').equals(selectedExId).sortBy('date');
-				if (progressLoadSeq !== seq) return; // stale — discard
-				prs = prData;
+				try {
+					const prData = await db.personalRecords
+						.where('exerciseId').equals(selectedExId).sortBy('date');
+					if (progressLoadSeq !== seq) return; // stale — discard
+					prs = prData;
 
-				const wes = await db.workoutExercises.where('exerciseId').equals(selectedExId).toArray();
-				const workoutIds = [...new Set(wes.map((w) => w.workoutId))];
-				const workouts = await db.workouts
-					.where('id').anyOf(workoutIds)
-					.filter((w) => !!w.finishedAt)
-					.toArray();
-				workouts.sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
+					const wes = await db.workoutExercises.where('exerciseId').equals(selectedExId).toArray();
+					const workoutIds = [...new Set(wes.map((w) => w.workoutId))];
+					const workouts = await db.workouts
+						.where('id').anyOf(workoutIds)
+						.filter((w) => !!w.finishedAt)
+						.toArray();
+					workouts.sort((a, b) => new Date(a.finishedAt!).getTime() - new Date(b.finishedAt!).getTime());
 
-				const exRecord = await db.exercises.get(selectedExId);
-				const exType = exRecord?.type ?? 'weightReps';
+					const exRecord = await db.exercises.get(selectedExId);
+					const exType = exRecord?.type ?? 'weightReps';
 
-				const sessionPoints: { date: string; value: number }[] = [];
-				for (const workout of workouts) {
-					// Bug fix: use ALL workoutExercise rows for this exercise in this
-					// workout, not just the first match. If the exercise was added
-					// more than once in the same session (e.g. removed & re-added),
-					// `.find()` could grab an empty leftover row and hide real data
-					// for that session — this is why some exercises showed "No data
-					// yet" in Progress even though sets were logged for the workout.
-					const wesInWorkout = wes.filter((w) => w.workoutId === workout.id);
-					if (!wesInWorkout.length) continue;
-					const allSets = (
-						await Promise.all(wesInWorkout.map((we) => db.sets.where('workoutExerciseId').equals(we.id).toArray()))
-					).flat();
+					const sessionPoints: { date: string; value: number }[] = [];
+					let setsSeen = 0;
+					let setsUsable = 0;
+					for (const workout of workouts) {
+						// Bug fix: use ALL workoutExercise rows for this exercise in this
+						// workout, not just the first match. If the exercise was added
+						// more than once in the same session (e.g. removed & re-added),
+						// `.find()` could grab an empty leftover row and hide real data
+						// for that session — this is why some exercises showed "No data
+						// yet" in Progress even though sets were logged for the workout.
+						const wesInWorkout = wes.filter((w) => w.workoutId === workout.id);
+						if (!wesInWorkout.length) continue;
+						const allSets = (
+							await Promise.all(wesInWorkout.map((we) => db.sets.where('workoutExerciseId').equals(we.id).toArray()))
+						).flat();
+						setsSeen += allSets.length;
 
-					let maxVal = 0;
-					if (exType === 'weightReps') {
-						// Bug fix: previously plotted the max raw weight per session,
-						// ignoring reps entirely — a 100kg×1 single would outrank a
-						// 95kg×12 set, showing "progress" trending the wrong way. Use
-						// estimated 1RM (Epley) per set instead, consistent with the
-						// Bests tab and PR system.
-						const sets = allSets.filter((s) => setHasUsableData(s, exType));
-						if (!sets.length) continue;
-						maxVal = Math.max(...sets.map((s) => epley(s.weight!, s.reps!)));
-					} else if (exType === 'bodyweightReps') {
-						const sets = allSets.filter((s) => setHasUsableData(s, exType));
-						if (!sets.length) continue;
-						maxVal = Math.max(...sets.map((s) => s.reps!));
-					} else if (exType === 'time') {
-						const sets = allSets.filter((s) => setHasUsableData(s, exType));
-						if (!sets.length) continue;
-						maxVal = Math.max(...sets.map((s) => s.durationSec!));
-					} else if (exType === 'distance') {
-						const sets = allSets.filter((s) => setHasUsableData(s, exType));
-						if (!sets.length) continue;
-						maxVal = Math.max(...sets.map((s) => s.distanceM!));
+						let maxVal = 0;
+						if (exType === 'weightReps') {
+							// Bug fix: previously plotted the max raw weight per session,
+							// ignoring reps entirely — a 100kg×1 single would outrank a
+							// 95kg×12 set, showing "progress" trending the wrong way. Use
+							// estimated 1RM (Epley) per set instead, consistent with the
+							// Bests tab and PR system.
+							const sets = allSets.filter((s) => setHasUsableData(s, exType));
+							setsUsable += sets.length;
+							if (!sets.length) continue;
+							maxVal = Math.max(...sets.map((s) => epley(s.weight!, s.reps!)));
+						} else if (exType === 'bodyweightReps') {
+							const sets = allSets.filter((s) => setHasUsableData(s, exType));
+							setsUsable += sets.length;
+							if (!sets.length) continue;
+							maxVal = Math.max(...sets.map((s) => s.reps!));
+						} else if (exType === 'time') {
+							const sets = allSets.filter((s) => setHasUsableData(s, exType));
+							setsUsable += sets.length;
+							if (!sets.length) continue;
+							maxVal = Math.max(...sets.map((s) => s.durationSec!));
+						} else if (exType === 'distance') {
+							const sets = allSets.filter((s) => setHasUsableData(s, exType));
+							setsUsable += sets.length;
+							if (!sets.length) continue;
+							maxVal = Math.max(...sets.map((s) => s.distanceM!));
+						}
+						sessionPoints.push({
+							date: new Date(workout.finishedAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+							value: maxVal
+						});
 					}
-					sessionPoints.push({
-						date: new Date(workout.finishedAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-						value: maxVal
-					});
+					if (progressLoadSeq !== seq) return; // stale
+					sessionData = sessionPoints;
+					if (!sessionPoints.length) {
+						progressDebug =
+							`debug: exType=${exType}, workoutExerciseRows=${wes.length}, ` +
+							`distinctWorkoutIds=${workoutIds.length}, finishedWorkoutsFound=${workouts.length}, ` +
+							`totalSetsSeen=${setsSeen}, usableSets=${setsUsable}`;
+					}
+				} catch (err) {
+					if (progressLoadSeq !== seq) return;
+					progressDebug = `error: ${err instanceof Error ? err.message : String(err)}`;
 				}
-				if (progressLoadSeq !== seq) return; // stale
-				sessionData = sessionPoints;
 			})();
 		}
 	});
@@ -507,6 +530,9 @@
 			{:else if selectedExId}
 				<div class="rounded-2xl border border-dashed border-zinc-800 p-6 text-center text-zinc-500">
 					<p>No data yet for this exercise</p>
+					{#if progressDebug}
+						<p class="mt-2 text-xs text-zinc-600 break-all">{progressDebug}</p>
+					{/if}
 				</div>
 			{/if}
 		</div>
