@@ -134,8 +134,25 @@
 		loaded = true;
 	});
 
-	// M1: cancellation counter — incremented each time selectedExId changes
-	let progressLoadSeq = $state(0);
+	// M1: cancellation counter — incremented each time selectedExId changes.
+	// Bug fix: this was a `$state` variable that got both read AND written
+	// synchronously inside the very same $effect below (`++progressLoadSeq`).
+	// Svelte 5 tracks that synchronous read as a dependency of the effect, so
+	// the effect's own write to it retriggered itself — an infinite
+	// self-triggering loop that Svelte detects and throws
+	// `effect_update_depth_exceeded` for. Since this counter is only ever
+	// used for cancellation bookkeeping inside this effect (never read in the
+	// template), it doesn't need to be reactive state at all — a plain
+	// module-external counter breaks the cycle entirely.
+	// This was a genuine, pre-existing bug: because no test ever actually
+	// mounted this Svelte component (all prior tests were data-layer only),
+	// nothing ever exercised this code path in a real browser, so the crash
+	// was completely invisible until testing the actual Progress tab
+	// end-to-end. When it threw, the async chain aborted before
+	// `sessionData` was ever assigned — which is exactly why the Progress
+	// tab kept showing "No data yet for this exercise" even for an exercise
+	// with perfectly valid weight+reps data.
+	let progressLoadSeq = 0;
 
 	$effect(() => {
 		if (selectedExId) {
