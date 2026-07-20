@@ -47,6 +47,13 @@
 				await activeWorkout.rehydrate();
 			}
 
+			// Bug fix: finalize any discard whose 5s undo window never got to
+			// close (e.g. the app was closed/reloaded right after tapping
+			// Discard) — these are marked with a local-only pendingDiscardAt
+			// flag and were skipped by rehydrate() above, but still need to
+			// actually be deleted + tombstoned.
+			await activeWorkout.finalizeOrphanedPendingDiscards();
+
 			// Check auto-complete (1h inactivity)
 			await activeWorkout.checkAutoComplete();
 

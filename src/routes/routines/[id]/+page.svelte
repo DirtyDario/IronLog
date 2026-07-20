@@ -34,6 +34,9 @@
 
 	onMount(async () => {
 		const id = $page.params.id;
+		// Guard against a missing route param (also narrows string|undefined ->
+		// string for TypeScript, since $page.params is typed generically).
+		if (!id) { goto('/routines'); return; }
 		routine = (await db.routines.get(id)) ?? null;
 		// M7: redirect if routine not found
 		if (!routine) { goto('/routines'); return; }

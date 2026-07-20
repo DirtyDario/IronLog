@@ -120,11 +120,14 @@ export async function detectPRsForWorkout(workoutId: string): Promise<PersonalRe
 				// Load from DB if not cached — C2: exclude PRs from THIS workout so we
 			// compare against historical bests only, not our own in-progress PRs
 			if (!existingBests.has(key)) {
-					const existing = await db.personalRecords
-						.where('[exerciseId+category+bucket]')
-						.equals([candidate.exerciseId, candidate.category, candidate.bucket])
-						.filter((r) => r.workoutId !== workoutId) // C2: historical only
-						.toArray();
+				const existing = await db.personalRecords
+					.where('[exerciseId+category+bucket]')
+					// Dexie doesn't statically type compound-index `.equals()` args
+					// from a string index name — this is the standard/documented
+					// workaround (see Dexie's own compound-index examples).
+					.equals([candidate.exerciseId, candidate.category, candidate.bucket] as unknown as string)
+					.filter((r) => r.workoutId !== workoutId) // C2: historical only
+					.toArray();
 					const best = existing.reduce((b, r) => Math.max(b, prValue(r)), 0);
 					existingBests.set(key, best);
 				}

@@ -14,6 +14,9 @@
 
 	onMount(async () => {
 		const id = $page.params.id;
+		// Guard against a missing route param (also narrows string|undefined ->
+		// string for TypeScript, since $page.params is typed generically).
+		if (!id) { goto('/history'); return; }
 		workout = (await db.workouts.get(id)) ?? null;
 		// M6: redirect to 404-like state if workout not found
 		if (!workout) { goto('/history'); return; }

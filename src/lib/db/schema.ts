@@ -40,6 +40,12 @@ export interface Workout {
 	durationSec?: number;
 	finishedAt?: Date;
 	lastActivityAt?: number;
+	// Local-only marker (never synced — deliberately not in sync.ts's push/pull
+	// mappings) set while a discard's 5s undo window is pending. Lets
+	// rehydrate() avoid resurrecting a workout the user just discarded, and
+	// lets app boot finalize the delete if the app was closed before the
+	// undo window's setTimeout ever got to fire (see activeWorkout.ts).
+	pendingDiscardAt?: number;
 	_synced?: boolean;
 	_lastModified?: number;
 }
@@ -94,7 +100,11 @@ export interface PersonalRecord {
 	id: string;
 	exerciseId: string;
 	category: PRCategory;          // 'strength' | 'duration' | 'distance'
-	bucket?: PRBucket;             // strength only: '1RM' | '3RM' | '5RM' | '8RM' | '10RM' | '12RM' | '13+RM'
+	// strength: '1RM' | '3RM' | ... '13+RM'. Non-strength (duration/distance)
+	// categories store the CARDIO_BUCKET_SENTINEL ('-') so they can still be
+	// indexed via the [exerciseId+category+bucket] compound index (see pr.ts).
+	// Typed as `string` (not just PRBucket) to reflect that.
+	bucket?: string;
 	weight?: number;               // strength: kg lifted
 	reps?: number;                 // strength: actual reps performed
 	durationSec?: number;          // duration PR

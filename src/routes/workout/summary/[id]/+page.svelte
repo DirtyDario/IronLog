@@ -31,6 +31,9 @@
 
 	onMount(async () => {
 		const id = $page.params.id;
+		// Guard against a missing route param (also narrows string|undefined ->
+		// string for TypeScript, since $page.params is typed generically).
+		if (!id) { goto('/history'); return; }
 		workout = (await db.workouts.get(id)) ?? null;
 		if (!workout) { goto('/history'); return; }
 		if (workout?.name) routineName = workout.name;

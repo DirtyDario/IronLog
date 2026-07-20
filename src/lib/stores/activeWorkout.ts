@@ -50,10 +50,11 @@ function createActiveWorkoutStore() {
 		autoCompleteNotice: null
 	});
 
-	// Bug fix (undo-discard race): the pending "actually delete this" timer for
-	// the current discard-undo window. Tracked at module scope so
-	// restoreDiscarded() can cancel it.
-	let discardTimeout: ReturnType<typeof setTimeout> | null = null;
+	// Bug fix (undo-discard race): the pending "actually delete this" discard
+	// for the current undo window. Tracked at module scope (not just a bare
+	// timeout handle — see finalizePendingDiscard below for why) so
+	// restoreDiscarded()/start()/discard() can all reason about it.
+	let pendingDiscard: { snapshot: DiscardSnapshot; timeoutId: ReturnType<typeof setTimeout> } | null = null;
 
 	type DiscardSnapshot = {
 		workout: Workout;
@@ -84,6 +85,27 @@ function createActiveWorkoutStore() {
 		await db.workouts.delete(snapshot.workout.id);
 	}
 
+	// Bug fix: if a NEW discard() (or start()) happens while a PREVIOUS
+	// discard's 5s undo window is still pending, that previous timer's data
+	// must not be silently orphaned. Comparing against the store's current
+	// `lastDiscarded` inside the timeout callback isn't enough, because any
+	// subsequent `set(...)` call (e.g. starting a new workout) overwrites
+	// `lastDiscarded` too, which would make the pending timeout think it was
+	// "already restored" and skip the delete entirely — leaving the old
+	// discarded workout's rows permanently in Dexie (unfinished, no
+	// finishedAt), where rehydrate() could even resurrect them into view on
+	// the next app load. So: whenever we're about to replace the pending
+	// discard (new discard, or starting a fresh workout), finalize the
+	// previous one's delete immediately instead of losing track of it.
+	async function finalizePendingDiscard() {
+		if (!pendingDiscard) return;
+		const { snapshot, timeoutId } = pendingDiscard;
+		clearTimeout(timeoutId);
+		pendingDiscard = null;
+		await performDiscardDelete(snapshot);
+		schedulePush();
+	}
+
 	async function updateLastActivity(workoutId: string) {
 		const ts = Date.now();
 		await db.workouts.update(workoutId, { lastActivityAt: ts, _lastModified: ts });
@@ -98,8 +120,15 @@ function createActiveWorkoutStore() {
 			// from IDB if the store is empty. Looks for the most recent unfinished workout.
 			update((s) => ({ ...s, rehydrating: true }));
 			try {
+				// Bug fix: exclude workouts still marked pendingDiscardAt — these are
+				// mid-discard (their 5s undo window's setTimeout was lost because the
+				// app was closed/reloaded before it fired). Without this, closing the
+				// app right after tapping Discard would resurrect the "discarded"
+				// workout as if it were still active. finalizeOrphanedPendingDiscards()
+				// (called from +layout.svelte on boot) actually deletes these shortly
+				// after this runs.
 				const unfinished = await db.workouts
-					.filter((w) => !w.finishedAt)
+					.filter((w) => !w.finishedAt && !w.pendingDiscardAt)
 					.toArray();
 				if (!unfinished.length) return;
 				// Use most recently started (latest date)
@@ -127,6 +156,12 @@ function createActiveWorkoutStore() {
 		},
 
 		async start(name?: string) {
+			// Bug fix: if a previous discard's 5s undo window is still pending
+			// when the user starts a new workout, finalize (actually delete) it
+			// now instead of letting the upcoming `set(...)` call below silently
+			// overwrite `lastDiscarded` and orphan that data forever.
+			await finalizePendingDiscard();
+
 			// Reset rest timer defensively. useDefault() (not just stop()) also
 			// resets `total` back to the user's configured default — otherwise a
 			// preset picked during a previous workout (e.g. tapping "3:00" once)
@@ -338,6 +373,12 @@ function createActiveWorkoutStore() {
 			const state = get({ subscribe });
 			if (!state.workout) return;
 
+			// Bug fix: if there's already a pending (undo-able) discard from
+			// before this one, finalize it now rather than letting this new
+			// discard's `set(...)` call silently overwrite `lastDiscarded` and
+			// orphan the earlier snapshot's data forever.
+			await finalizePendingDiscard();
+
 			// Snapshot for undo BEFORE clearing state
 			// M8: use structuredClone to deep-clone so Svelte proxy objects don't leak into Dexie
 			const snapshot: DiscardSnapshot = structuredClone({
@@ -364,6 +405,14 @@ function createActiveWorkoutStore() {
 
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: snapshot, rehydrating: false, autoCompleteNotice: null });
 
+			// Bug fix: persist a lightweight LOCAL-ONLY marker on the workout row
+			// right away (never synced — see schema.ts) so that if the app is
+			// closed/reloaded during the 5s undo window (the in-memory setTimeout
+			// below would be lost), rehydrate() won't resurrect this workout as
+			// still-active, and finalizeOrphanedPendingDiscards() (called on next
+			// app boot) can actually finish deleting it.
+			await db.workouts.update(snapshot.workout.id, { pendingDiscardAt: Date.now() });
+
 			// Bug fix (undo-discard race): previously the tombstones + hard-delete
 			// ran synchronously right here, and only the schedulePush() call was
 			// delayed 5s (C4). But ANY unrelated schedulePush() elsewhere in the
@@ -375,13 +424,16 @@ function createActiveWorkoutStore() {
 			// window actually closes. Nothing is marked _synced:false or deleted
 			// from Dexie until we're sure the user didn't tap Undo, so there is
 			// nothing for a stray schedulePush() to prematurely flush.
-			if (discardTimeout) clearTimeout(discardTimeout);
-			discardTimeout = setTimeout(async () => {
-				discardTimeout = null;
-				const s = get({ subscribe });
-				// If restoreDiscarded() already fired (or a newer discard superseded
-				// this one), don't delete anything.
-				if (s.lastDiscarded?.workout.id !== snapshot.workout.id) return;
+			//
+			// pendingDiscard (not just a bare timeout) is tracked at module scope
+			// so start()/discard() can finalize a still-pending previous discard
+			// instead of losing track of it (see finalizePendingDiscard above).
+			const timeoutId = setTimeout(async () => {
+				// Only proceed if we're still the current pending discard — if
+				// restoreDiscarded()/finalizePendingDiscard() already handled us,
+				// pendingDiscard will have moved on or been cleared.
+				if (pendingDiscard?.snapshot !== snapshot) return;
+				pendingDiscard = null;
 
 				await performDiscardDelete(snapshot);
 				schedulePush();
@@ -389,6 +441,7 @@ function createActiveWorkoutStore() {
 					st.lastDiscarded?.workout.id === snapshot.workout.id ? { ...st, lastDiscarded: null } : st
 				);
 			}, 5000);
+			pendingDiscard = { snapshot, timeoutId };
 		},
 
 		async restoreDiscarded() {
@@ -400,10 +453,15 @@ function createActiveWorkoutStore() {
 			// mutations until the undo window closes, nothing has actually been
 			// tombstoned or deleted yet — we only need to stop the timer and
 			// restore the in-memory state. No DB repair/undo needed.
-			if (discardTimeout) {
-				clearTimeout(discardTimeout);
-				discardTimeout = null;
+			if (pendingDiscard?.snapshot.workout.id === snap.workout.id) {
+				clearTimeout(pendingDiscard.timeoutId);
+				pendingDiscard = null;
 			}
+
+			// Clear the local-only pendingDiscardAt marker written at discard()
+			// time — the workout row itself was never actually deleted, only
+			// flagged, so we just need to un-flag it.
+			await db.workouts.update(snap.workout.id, { pendingDiscardAt: undefined });
 
 			// Restore state
 			set({
@@ -480,6 +538,33 @@ function createActiveWorkoutStore() {
 
 				set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false, autoCompleteNotice: 'finished' });
 			}
+		},
+
+		// Bug fix: if the app was closed/reloaded during a discard's 5s undo
+		// window, the in-memory setTimeout that would have finalized the delete
+		// is lost — the pendingDiscardAt-marked workout would otherwise linger
+		// in Dexie forever (rehydrate() already knows to skip it as "active",
+		// but it should still actually be deleted). Call this once on app boot
+		// (after rehydrate(), before checkAutoComplete()) to sweep those up.
+		async finalizeOrphanedPendingDiscards() {
+			const orphaned = await db.workouts.filter((w) => !!w.pendingDiscardAt).toArray();
+			if (!orphaned.length) return;
+			for (const workout of orphaned) {
+				const wes = await db.workoutExercises.where('workoutId').equals(workout.id).toArray();
+				const weIds = wes.map((we) => we.id);
+				const sets = (
+					await Promise.all(weIds.map((weId) => db.sets.where('workoutExerciseId').equals(weId).toArray()))
+				).flat();
+
+				await Promise.all(sets.map((s) => writeTombstone('set', s.id)));
+				await Promise.all(weIds.map((id) => writeTombstone('workoutExercise', id)));
+				await writeTombstone('workout', workout.id);
+
+				await Promise.all(weIds.map((weId) => db.sets.where('workoutExerciseId').equals(weId).delete()));
+				await db.workoutExercises.where('workoutId').equals(workout.id).delete();
+				await db.workouts.delete(workout.id);
+			}
+			schedulePush();
 		}
 	};
 }

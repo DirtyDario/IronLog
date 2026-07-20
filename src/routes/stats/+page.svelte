@@ -294,11 +294,17 @@
 	// H2: progress chart opts — y-axis label adapts to exercise type
 	let progressChartOpts = $derived.by(() => {
 		const type = selectedExercise?.type ?? 'weightReps';
-		const yLabel = (value: number) =>
-			type === 'weightReps' ? `${value} kg`
+		// Bug fix: Chart.js's tick callback signature is
+		// `(tickValue: string | number, ...) => ...`, not `(value: number) => ...`
+		// — the previous narrower type caused a type error. Coerce to number
+		// since our y-axis is always numeric.
+		const yLabel = (tickValue: string | number) => {
+			const value = typeof tickValue === 'number' ? tickValue : parseFloat(tickValue);
+			return type === 'weightReps' ? `${value} kg`
 			: type === 'bodyweightReps' ? `${value} reps`
 			: type === 'time' ? `${value}s`
 			: `${(value / 1000).toFixed(1)} km`;
+		};
 		return {
 			responsive: true,
 			maintainAspectRatio: false,
