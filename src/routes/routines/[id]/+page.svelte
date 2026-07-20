@@ -53,11 +53,19 @@
 
 	async function addExercise(exerciseId: string) {
 		if (!routine) return;
+		// Bug fix: using `savedItems.length` for the new order collides with an
+		// existing item's order once anything has ever been removed (removals
+		// only filtered local state — the surviving items' `order` values were
+		// never renumbered, so length and max(order) drift apart). Use
+		// max(order)+1 instead, which is always safe.
+		const nextOrder = savedItems.length
+			? Math.max(...savedItems.map((i) => i.re.order)) + 1
+			: 0;
 		const re: RoutineExercise = {
 			id: crypto.randomUUID(),
 			routineId: routine.id,
 			exerciseId,
-			order: savedItems.length,
+			order: nextOrder,
 			targetSets: 3,
 			targetReps: 10,
 			_synced: false,
@@ -70,9 +78,24 @@
 	}
 
 	async function removeExercise(id: string) {
+		// Bug fix: this previously deleted the row locally with no tombstone,
+		// so the remote copy was never cleaned up on next sync — the routine
+		// exercise would resurrect from Supabase on the next pull.
+		await db.tombstones.put({ id, entity: 'routineExercise', entityId: id, deletedAt: new Date(), _synced: false });
 		await db.routineExercises.delete(id);
 		schedulePush(); // M3: trigger sync after removing exercise from routine
-		savedItems = savedItems.filter((i) => i.id !== id);
+
+		// Renumber remaining items to stay contiguous (0..n-1) so `order` values
+		// never drift/collide with future additions.
+		const remaining = savedItems.filter((i) => i.id !== id);
+		const renumbered = remaining.map((item, i) => ({ ...item, re: { ...item.re, order: i } }));
+		await Promise.all(
+			renumbered.map((item) =>
+				db.routineExercises.update(item.id, { order: item.re.order, _synced: false, _lastModified: Date.now() })
+			)
+		);
+		schedulePush();
+		savedItems = renumbered;
 	}
 
 	async function updateTargets(reId: string, targetSets: number, targetReps: number) {

@@ -39,8 +39,15 @@ export async function getStreak(): Promise<number> {
 	const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 	const thisWeek = weekMonday(new Date());
 
+	// Bug fix: previously started the check at `thisWeek` — if the user hasn't
+	// trained yet during the current (still in-progress) week, the streak
+	// immediately read 0 even with a long unbroken streak of prior weeks. A
+	// streak should only actually break once a full week has been missed, not
+	// just because "today" hasn't happened yet. So: if this week has no workout
+	// yet, start counting from last week instead — the current week simply
+	// doesn't count towards the streak (yet), but doesn't reset it either.
 	let streak = 0;
-	let check = thisWeek;
+	let check = trainedWeeks.has(thisWeek) ? thisWeek : thisWeek - MS_PER_WEEK;
 	while (trainedWeeks.has(check)) {
 		streak++;
 		check -= MS_PER_WEEK;
@@ -63,7 +70,13 @@ export async function getWeeklyFrequency(): Promise<WeekCount[]> {
 		const d = new Date(now);
 		d.setDate(d.getDate() - i * 7);
 		const start = new Date(d);
-		start.setDate(start.getDate() - start.getDay() + 1); // Monday
+		// Bug fix: `-getDay()+1` is wrong for Sunday (getDay()===0), which
+		// resolved to +1 (the *next* day, not back to Monday) — pushing Sunday
+		// workouts into the following week's bucket and making this
+		// inconsistent with getStreak()'s weekMonday(), which correctly treats
+		// Sunday as day 0 needing a -6 shift back to the preceding Monday.
+		const day = start.getDay();
+		start.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
 		start.setHours(0, 0, 0, 0);
 		const end = new Date(start);
 		end.setDate(end.getDate() + 7);
@@ -98,6 +111,16 @@ export async function getMuscleDistribution(): Promise<MuscleCount[]> {
 		if (!finishedIds.has(we.workoutId)) continue; // H6: skip unfinished
 		const ex = await db.exercises.get(we.exerciseId);
 		if (!ex) continue;
+		// Bug fix: previously counted every workoutExercise row, including ones
+		// added to a finished workout but never actually performed (no completed
+		// sets — e.g. added then abandoned). That inflated a muscle group's
+		// share with entries that reflect no real training. Only count entries
+		// with at least one completed set.
+		const hasCompletedSet = await db.sets
+			.where('workoutExerciseId').equals(we.id)
+			.filter((s) => s.completed)
+			.first();
+		if (!hasCompletedSet) continue;
 		const mg = ex.muscleGroup ?? 'other';
 		map.set(mg, (map.get(mg) ?? 0) + 1);
 	}

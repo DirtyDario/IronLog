@@ -95,15 +95,21 @@
 
 	async function updateEditedSet(setId: string, type: string, field: 'weight' | 'reps' | 'durationSec' | 'distanceKm', raw: string) {
 		const changes: Partial<ExerciseSet> = {};
+		// Bug fix: `parseFloat(raw) || undefined` treated a legitimately-entered
+		// 0 the same as an empty/invalid input, silently erasing it. Use an
+		// explicit isNaN check instead so 0 is preserved as a real value.
 		if (field === 'distanceKm') {
 			const km = parseFloat(raw);
-			changes.distanceM = km ? km * 1000 : undefined;
+			changes.distanceM = isNaN(km) ? undefined : km * 1000;
 		} else if (field === 'weight') {
-			changes.weight = parseFloat(raw) || undefined;
+			const w = parseFloat(raw);
+			changes.weight = isNaN(w) ? undefined : w;
 		} else if (field === 'reps') {
-			changes.reps = parseInt(raw) || undefined;
+			const r = parseInt(raw);
+			changes.reps = isNaN(r) ? undefined : r;
 		} else if (field === 'durationSec') {
-			changes.durationSec = parseInt(raw) || undefined;
+			const d = parseInt(raw);
+			changes.durationSec = isNaN(d) ? undefined : d;
 		}
 		await db.sets.update(setId, { ...changes, ...syncMeta() });
 		schedulePush();

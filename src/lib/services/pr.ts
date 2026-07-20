@@ -60,10 +60,26 @@ export async function getBestPerBucket(exerciseId: string): Promise<Record<PRBuc
 		if (!r.bucket || !(ALL_BUCKETS as string[]).includes(r.bucket)) continue;
 		const bucket = r.bucket as PRBucket;
 		const current = result[bucket];
-		// M1 fix: compare reps for bodyweight, weight for weighted
-		const newVal = r.weight ?? r.reps ?? 0;
-		const curVal = current ? (current.weight ?? current.reps ?? 0) : 0;
-		if (newVal > curVal) result[bucket] = r;
+		if (!current) {
+			result[bucket] = r;
+			continue;
+		}
+		// Bug fix: previously compared `r.weight ?? r.reps` directly against
+		// `current.weight ?? current.reps`, which mixes kg and rep counts when
+		// an exercise has both weighted and bodyweight-only entries in the same
+		// bucket (e.g. a 20-rep bodyweight set numerically "beating" a 15kg
+		// weighted set). Weighted records always take priority; only compare
+		// by reps when neither record has a weight.
+		const currentHasWeight = current.weight != null;
+		const newHasWeight = r.weight != null;
+		if (newHasWeight && !currentHasWeight) {
+			result[bucket] = r;
+		} else if (newHasWeight === currentHasWeight) {
+			const newVal = r.weight ?? r.reps ?? 0;
+			const curVal = current.weight ?? current.reps ?? 0;
+			if (newVal > curVal) result[bucket] = r;
+		}
+		// else: current already has weight and the new one doesn't — keep current
 	}
 	return result;
 }
@@ -148,6 +164,23 @@ export async function recomputeAllPRs(): Promise<void> {
 	recomputeInFlight = (async () => {
 		// S4: Guard is set AFTER successful completion (not at start) so a crash during
 		// recompute doesn't permanently block future attempts.
+
+		// Bug fix: previously this cleared personalRecords locally without writing
+		// tombstones, so any PR already pushed to Supabase stayed there forever —
+		// on the next pull, those stale/obsolete remote PRs (e.g. from since-edited
+		// or since-deleted sets) got pulled back down and resurrected locally.
+		// Tombstone every existing local PR first so the eventual re-push also
+		// deletes the corresponding remote rows; the recompute below then
+		// re-inserts whichever PRs still apply (see buildCandidates/prValue),
+		// which is safe because deterministic ids mean a delete-then-recreate in
+		// the same sync pass is a no-op for the ones that still apply.
+		const existing = await db.personalRecords.toArray();
+		await Promise.all(
+			existing.map((pr) =>
+				db.tombstones.put({ id: pr.id, entity: 'personalRecord', entityId: pr.id, deletedAt: new Date(), _synced: false })
+			)
+		);
+
 		await db.personalRecords.clear();
 
 		const workouts = await db.workouts
@@ -190,6 +223,11 @@ export async function recomputeAllPRs(): Promise<void> {
 		if (toInsert.length) {
 			// bulkPut (not bulkAdd) — deterministic IDs mean duplicates are safe overwrites
 			await db.personalRecords.bulkPut(toInsert);
+		}
+		// Bug fix: schedulePush unconditionally (not just when toInsert.length) —
+		// otherwise the tombstones written above for stale PRs never get pushed
+		// when the recompute removes PRs without replacing them with new ones.
+		if (existing.length || toInsert.length) {
 			schedulePush();
 		}
 

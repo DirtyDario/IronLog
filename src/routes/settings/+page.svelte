@@ -76,7 +76,7 @@
 	// ── Rest timer ──────────────────────────────────────────────────────────────
 	function selectRestTimer(sec: number) {
 		settings.setRestTimerDefault(sec);
-		restTimer.setTotal(sec);
+		restTimer.setDefault(sec);
 	}
 
 	// ── Language ────────────────────────────────────────────────────────────────

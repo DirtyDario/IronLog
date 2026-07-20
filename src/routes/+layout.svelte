@@ -25,7 +25,7 @@
 		// Apply persisted accent color + other settings immediately
 		settings.init();
 		// Wire rest timer default from settings
-		restTimer.setTotal(get(settings).restTimerDefault);
+		restTimer.setDefault(get(settings).restTimerDefault);
 
 		// H16: onMount must return a sync cleanup fn (not async).
 		// All async work is fired-and-forgotten inside, cleanup fn is returned synchronously.

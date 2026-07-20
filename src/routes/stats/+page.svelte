@@ -188,9 +188,14 @@
 
 					let maxVal = 0;
 					if (exType === 'weightReps') {
-						const sets = allSets.filter((s) => s.completed && s.weight != null);
+						// Bug fix: previously plotted the max raw weight per session,
+						// ignoring reps entirely — a 100kg×1 single would outrank a
+						// 95kg×12 set, showing "progress" trending the wrong way. Use
+						// estimated 1RM (Epley) per set instead, consistent with the
+						// Bests tab and PR system.
+						const sets = allSets.filter((s) => s.completed && s.weight != null && s.reps != null);
 						if (!sets.length) continue;
-						maxVal = Math.max(...sets.map((s) => s.weight!));
+						maxVal = Math.max(...sets.map((s) => epley(s.weight!, s.reps!)));
 					} else if (exType === 'bodyweightReps') {
 						const sets = allSets.filter((s) => s.completed && s.reps != null);
 						if (!sets.length) continue;
@@ -254,8 +259,10 @@
 	let progressChartData = $derived.by(() => {
 		if (!sessionData.length) return null;
 		// H2: label depends on exercise type
+		// Bug fix: relabeled to match the Epley-1RM values now plotted for
+		// weightReps exercises (see the sessionData-building effect above).
 		const type = selectedExercise?.type ?? 'weightReps';
-		const label = type === 'weightReps' ? 'Max weight (kg)'
+		const label = type === 'weightReps' ? 'Est. 1RM (kg)'
 			: type === 'bodyweightReps' ? 'Max reps'
 			: type === 'time' ? 'Max duration (s)'
 			: 'Max distance (m)';
@@ -494,6 +501,11 @@
 							{#if best.weight && best.reps}
 								<p class="text-lg font-bold">{best.weight} kg × {best.reps} reps</p>
 								<p class="text-sm text-zinc-400">~{epley(best.weight, best.reps)} kg est. 1RM</p>
+							{:else if best.reps}
+								<!-- Bug fix: bodyweight (reps-only, no weight) PRs previously
+								     matched none of the branches here and rendered a blank card
+								     with just the "All-Time Best" header and no value. -->
+								<p class="text-lg font-bold">{best.reps} reps</p>
 							{:else if best.durationSec}
 								<p class="text-lg font-bold">{best.durationSec}s</p>
 							{:else if best.distanceM}

@@ -142,6 +142,7 @@ async function pushUnsynced(userId: string) {
 			type: e.type,
 			muscle_group: e.muscleGroup,
 			is_custom: e.isCustom,
+			is_unilateral: e.isUnilateral ?? null,
 			notes: e.notes ?? null,
 			updated_at: new Date((e as any)._lastModified ?? Date.now()).toISOString()
 		}));
@@ -161,6 +162,7 @@ async function pushUnsynced(userId: string) {
 			notes: w.notes ?? null,
 			duration_sec: w.durationSec ?? null,
 			finished_at: toSupabaseDate(w.finishedAt),
+			last_activity_at: w.lastActivityAt ?? null,
 			updated_at: new Date((w as any)._lastModified ?? Date.now()).toISOString()
 		}));
 		const { error } = await supabase.from('workouts').upsert(rows, { onConflict: 'id' });
@@ -315,6 +317,7 @@ async function pullChanges(userId: string) {
 				type: r.type,
 				muscleGroup: r.muscle_group,
 				isCustom: r.is_custom,
+				isUnilateral: r.is_unilateral ?? undefined,
 				notes: r.notes ?? undefined,
 				_synced: true,
 				_lastModified: remoteTs
@@ -336,6 +339,7 @@ async function pullChanges(userId: string) {
 				notes: r.notes ?? undefined,
 				durationSec: r.duration_sec ?? undefined,
 				finishedAt: r.finished_at ? new Date(r.finished_at) : undefined,
+				lastActivityAt: r.last_activity_at ?? undefined,
 				_synced: true,
 				_lastModified: remoteTs
 			} as any);

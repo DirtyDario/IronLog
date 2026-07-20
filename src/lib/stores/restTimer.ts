@@ -4,13 +4,21 @@ interface TimerState {
 	running: boolean;
 	remaining: number; // seconds
 	total: number;
+	// Bug fix: track the user's configured default (Settings) separately from
+	// `total`. Previously `start(seconds)` always overwrote `total` with
+	// whatever value was passed (including quick-preset taps in RestTimerBar),
+	// so as soon as the user tapped any preset once, the Settings default was
+	// permanently forgotten for the rest of the JS session — changing it in
+	// Settings appeared to do nothing.
+	default: number;
 }
 
 function createRestTimer() {
 	const { subscribe, set, update } = writable<TimerState>({
 		running: false,
 		remaining: 0,
-		total: 90 // overridden by settingsStore on init
+		total: 90, // overridden by settingsStore on init
+		default: 90
 	});
 
 	let interval: ReturnType<typeof setInterval> | null = null;
@@ -26,7 +34,7 @@ function createRestTimer() {
 		subscribe,
 		start(seconds: number) {
 			clearTimer();
-			set({ running: true, remaining: seconds, total: seconds });
+			update((s) => ({ ...s, running: true, remaining: seconds, total: seconds }));
 			interval = setInterval(() => {
 				update((s) => {
 					if (s.remaining <= 1) {
@@ -47,8 +55,18 @@ function createRestTimer() {
 			clearTimer();
 			update((s) => ({ ...s, running: false, remaining: s.total }));
 		},
-		setTotal(seconds: number) {
-			update((s) => ({ ...s, total: seconds }));
+		// Sets the configured default (from Settings). Only touches `total` when
+		// no rest is currently counting down, so changing the setting mid-rest
+		// doesn't visually disrupt the active countdown.
+		setDefault(seconds: number) {
+			update((s) => ({ ...s, default: seconds, total: s.running ? s.total : seconds }));
+		},
+		// Resets the timer back to the configured default. Called whenever a new
+		// workout starts, so a one-off preset picked during a previous workout
+		// doesn't leak into the next session.
+		useDefault() {
+			clearTimer();
+			update((s) => ({ ...s, running: false, total: s.default, remaining: s.default }));
 		}
 	};
 }

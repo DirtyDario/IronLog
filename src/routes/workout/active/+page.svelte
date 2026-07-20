@@ -32,10 +32,17 @@
 		// H12: Wait for rehydrate() to complete before deciding to redirect.
 		// rehydrate() runs async in layout; if we redirect immediately we may kick
 		// the user to '/' while their workout is still being loaded from IDB.
+		// Bug fix: this subscription was previously never unsubscribed if the
+		// component unmounted (e.g. user quickly navigated away) before
+		// rehydrating finished — it kept firing after unmount and could call
+		// goto('/') from a torn-down component. Track it and unsubscribe in the
+		// same cleanup function returned below.
+		let rehydrateUnsub: (() => void) | null = null;
 		if ($activeWorkout.rehydrating) {
-			const unsub = activeWorkout.subscribe((state) => {
+			rehydrateUnsub = activeWorkout.subscribe((state) => {
 				if (!state.rehydrating) {
-					unsub();
+					rehydrateUnsub?.();
+					rehydrateUnsub = null;
 					if (!state.workout) goto('/');
 				}
 			});
@@ -44,7 +51,10 @@
 			return;
 		}
 		const interval = setInterval(() => { now = Date.now(); }, 1000);
-		return () => clearInterval(interval);
+		return () => {
+			clearInterval(interval);
+			rehydrateUnsub?.();
+		};
 	});
 
 	let elapsedSec = $derived(
@@ -123,6 +133,21 @@
 	// Debounce timer refs for note saving
 	const noteTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
+	// Bug fix: a note typed within the 400ms debounce window was silently lost
+	// if the user tapped Finish/Discard right after typing — the setTimeout
+	// save never got a chance to run before the workout was finished/cleared.
+	// Call this before finishing/discarding to force any pending note writes
+	// through immediately.
+	async function flushPendingNotes() {
+		const pendingWeIds = Object.keys(noteDraft);
+		await Promise.all(
+			pendingWeIds.map(async (weId) => {
+				if (noteTimers[weId]) clearTimeout(noteTimers[weId]);
+				await activeWorkout.updateExerciseNotes(weId, noteDraft[weId].trim());
+			})
+		);
+	}
+
 	// Active side tab per exercise (for unilateral exercises)
 	let activeSide = $state<Record<string, 'left' | 'right'>>({});
 
@@ -172,6 +197,11 @@
 		if (!workoutId || isFinishing) return;
 		isFinishing = true;
 
+		// Flush any note still sitting in its 400ms debounce window before we
+		// collect resolved set values / finish — otherwise a note typed right
+		// before tapping Finish never gets saved.
+		await flushPendingNotes();
+
 		// Collect resolved values from all live SetRow components
 		const resolved: ResolvedValues[] = [];
 		for (const [, getFn] of setValueRegistry) {
@@ -210,9 +240,13 @@
 		let distanceKm: number | undefined;
 
 		// Weight: walk backward through current workout sets (same side only)
+		// Bug fix: guard against a missing element — currentSets can be shorter
+		// than `setIndex` expects in edge cases (e.g. right after switching L/R
+		// sides mid-edit, or a set deleted concurrently), which previously threw
+		// "Cannot read properties of undefined" and crashed the whole set list.
 		for (let j = setIndex - 1; j >= 0; j--) {
 			const s = currentSets[j];
-			if (weight == null && s.weight != null) { weight = s.weight; break; }
+			if (s && weight == null && s.weight != null) { weight = s.weight; break; }
 		}
 
 		// All fields: fallback to last-workout same-index, same-side set

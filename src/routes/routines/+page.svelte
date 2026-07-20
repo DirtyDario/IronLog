@@ -48,9 +48,25 @@
 
 		for (const re of routineExercises) {
 			const we = await activeWorkout.addExercise(re.exerciseId);
-			if (we && re.targetSets) {
+			if (!we || !re.targetSets) continue;
+
+			// Bug fix: for unilateral (L/R) exercises, previously always created
+			// bilateral sets (no side) regardless of the routine — so a routine
+			// with "One-Arm Row" started with plain bilateral sets instead of
+			// separate Left/Right sets. Note: targetReps is intentionally NOT
+			// pre-filled into the actual `reps` field here — sets only ever show
+			// placeholders (never pre-populated values, see addSet), since a
+			// pre-filled reps value would make the set look "already entered"
+			// and could get silently auto-completed on Finish with the *target*
+			// rep count instead of what was actually performed.
+			const exercise = await db.exercises.get(re.exerciseId);
+			const sides: Array<'left' | 'right' | undefined> = exercise?.isUnilateral
+				? ['left', 'right']
+				: [undefined];
+
+			for (const side of sides) {
 				for (let i = 0; i < re.targetSets; i++) {
-					await activeWorkout.addSet(we.id);
+					await activeWorkout.addSet(we.id, side);
 				}
 			}
 		}

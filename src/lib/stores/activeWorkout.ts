@@ -50,6 +50,40 @@ function createActiveWorkoutStore() {
 		autoCompleteNotice: null
 	});
 
+	// Bug fix (undo-discard race): the pending "actually delete this" timer for
+	// the current discard-undo window. Tracked at module scope so
+	// restoreDiscarded() can cancel it.
+	let discardTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	type DiscardSnapshot = {
+		workout: Workout;
+		workoutExercises: WorkoutExercise[];
+		sets: Record<string, ExerciseSet[]>;
+		previousSets: Record<string, LastWorkoutInfo | null>;
+		startedAt: Date | null;
+		autoCompleteNotice: null;
+	};
+
+	// Actually tombstone + hard-delete a discarded workout from Dexie and push.
+	// Split out so both the deferred (undo-able) and immediate (auto-discard)
+	// discard paths share the exact same delete logic.
+	async function performDiscardDelete(snapshot: DiscardSnapshot) {
+		const weIds = snapshot.workoutExercises.map((we) => we.id);
+		const setIds = Object.values(snapshot.sets).flat().map((s) => s.id);
+
+		// Tombstones (FK order: sets → workoutExercises → workouts)
+		await Promise.all(setIds.map((id) => writeTombstone('set', id)));
+		await Promise.all(weIds.map((id) => writeTombstone('workoutExercise', id)));
+		await writeTombstone('workout', snapshot.workout.id);
+
+		// Hard-delete from Dexie
+		for (const weId of weIds) {
+			await db.sets.where('workoutExerciseId').equals(weId).delete();
+		}
+		await db.workoutExercises.where('workoutId').equals(snapshot.workout.id).delete();
+		await db.workouts.delete(snapshot.workout.id);
+	}
+
 	async function updateLastActivity(workoutId: string) {
 		const ts = Date.now();
 		await db.workouts.update(workoutId, { lastActivityAt: ts, _lastModified: ts });
@@ -93,8 +127,12 @@ function createActiveWorkoutStore() {
 		},
 
 		async start(name?: string) {
-			// Reset rest timer defensively
-			restTimer.stop();
+			// Reset rest timer defensively. useDefault() (not just stop()) also
+			// resets `total` back to the user's configured default — otherwise a
+			// preset picked during a previous workout (e.g. tapping "3:00" once)
+			// would silently carry over and keep being used for every future
+			// workout's auto-started rests, ignoring the Settings default.
+			restTimer.useDefault();
 			const workout: Workout = {
 				id: crypto.randomUUID(),
 				date: new Date(),
@@ -190,7 +228,12 @@ function createActiveWorkoutStore() {
 				...s,
 				sets: {
 					...s.sets,
-					[workoutExerciseId]: s.sets[workoutExerciseId].map((st) =>
+					// Bug fix: guard against a missing sets array (unlike addSet's `?? []`,
+					// this previously assumed s.sets[workoutExerciseId] always existed and
+					// could throw "Cannot read properties of undefined" in edge cases (e.g.
+					// updating a set for a workoutExercise whose sets array wasn't populated
+					// yet, such as immediately after a rehydrate race).
+					[workoutExerciseId]: (s.sets[workoutExerciseId] ?? []).map((st) =>
 						st.id === setId ? { ...st, ...changes, ...meta } : st
 					)
 				}
@@ -291,53 +334,60 @@ function createActiveWorkoutStore() {
 			update((s) => ({ ...s, workoutExercises: updated }));
 		},
 
-		async discard() {
+		async discard(opts?: { immediate?: boolean }) {
 			const state = get({ subscribe });
 			if (!state.workout) return;
 
 			// Snapshot for undo BEFORE clearing state
 			// M8: use structuredClone to deep-clone so Svelte proxy objects don't leak into Dexie
-			const snapshot = structuredClone({
+			const snapshot: DiscardSnapshot = structuredClone({
 				workout: state.workout,
 				workoutExercises: [...state.workoutExercises],
 				sets: { ...state.sets },
 				previousSets: { ...state.previousSets },
 				startedAt: state.startedAt,
-				autoCompleteNotice: null as null
+				autoCompleteNotice: null
 			});
 
 			// Clear UI immediately (feels instant)
 			restTimer.stop();
+
+			if (opts?.immediate) {
+				// No undo window (used by checkAutoComplete for background
+				// auto-discards, where there's no interactive snackbar) — delete
+				// right away, same as before.
+				set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: null, rehydrating: false, autoCompleteNotice: null });
+				await performDiscardDelete(snapshot);
+				schedulePush();
+				return;
+			}
+
 			set({ workout: null, workoutExercises: [], sets: {}, startedAt: null, previousSets: {}, lastDiscarded: snapshot, rehydrating: false, autoCompleteNotice: null });
 
-			// Write tombstones + delete from Dexie
-			const weIds = snapshot.workoutExercises.map((we) => we.id);
-			const setIds = Object.values(snapshot.sets).flat().map((s) => s.id);
+			// Bug fix (undo-discard race): previously the tombstones + hard-delete
+			// ran synchronously right here, and only the schedulePush() call was
+			// delayed 5s (C4). But ANY unrelated schedulePush() elsewhere in the
+			// app (e.g. a debounced push already queued from a prior set edit)
+			// would flush these just-written tombstones to Supabase well before
+			// the 5s undo window closed, defeating the undo guarantee.
+			//
+			// Fix: defer the tombstones + hard-delete themselves until the undo
+			// window actually closes. Nothing is marked _synced:false or deleted
+			// from Dexie until we're sure the user didn't tap Undo, so there is
+			// nothing for a stray schedulePush() to prematurely flush.
+			if (discardTimeout) clearTimeout(discardTimeout);
+			discardTimeout = setTimeout(async () => {
+				discardTimeout = null;
+				const s = get({ subscribe });
+				// If restoreDiscarded() already fired (or a newer discard superseded
+				// this one), don't delete anything.
+				if (s.lastDiscarded?.workout.id !== snapshot.workout.id) return;
 
-			// Tombstones (FK order: sets → workoutExercises → workouts)
-			await Promise.all(setIds.map((id) => writeTombstone('set', id)));
-			await Promise.all(weIds.map((id) => writeTombstone('workoutExercise', id)));
-			await writeTombstone('workout', snapshot.workout.id);
-
-			// Hard-delete from Dexie
-			for (const weId of weIds) {
-				await db.sets.where('workoutExerciseId').equals(weId).delete();
-			}
-			await db.workoutExercises.where('workoutId').equals(snapshot.workout.id).delete();
-			await db.workouts.delete(snapshot.workout.id);
-
-			// C4: Do NOT call schedulePush immediately — wait until the undo window closes.
-			// If sync runs before the user can tap Undo, tombstones are pushed to Supabase
-			// and restoreDiscarded can't fully recover. Delay push until after 5s undo window.
-			// Auto-clear undo after 5 seconds, THEN schedule push
-			setTimeout(() => {
-				update((s) => {
-					if (s.lastDiscarded?.workout.id === snapshot.workout.id) {
-						schedulePush(); // user didn't undo — safe to push deletes now
-						return { ...s, lastDiscarded: null };
-					}
-					return s;
-				});
+				await performDiscardDelete(snapshot);
+				schedulePush();
+				update((st) =>
+					st.lastDiscarded?.workout.id === snapshot.workout.id ? { ...st, lastDiscarded: null } : st
+				);
 			}, 5000);
 		},
 
@@ -346,17 +396,14 @@ function createActiveWorkoutStore() {
 			const snap = state.lastDiscarded;
 			if (!snap) return;
 
-			// H13: Remove tombstones BEFORE re-inserting — otherwise sync might push the delete
-			const weIds = snap.workoutExercises.map((we) => we.id);
-			const setIds = Object.values(snap.sets).flat().map((s) => s.id);
-			await db.tombstones.bulkDelete([snap.workout.id, ...weIds, ...setIds]);
-
-			// H14: Mark everything as _synced: false so it gets pushed again
-			const meta = syncMeta();
-			await db.workouts.put({ ...snap.workout, ...meta });
-			await db.workoutExercises.bulkPut(snap.workoutExercises.map((we) => ({ ...we, ...meta })));
-			await db.sets.bulkPut(Object.values(snap.sets).flat().map((s) => ({ ...s, ...meta })));
-			schedulePush();
+			// Cancel the pending delete. Since discard() now defers all Dexie
+			// mutations until the undo window closes, nothing has actually been
+			// tombstoned or deleted yet — we only need to stop the timer and
+			// restore the in-memory state. No DB repair/undo needed.
+			if (discardTimeout) {
+				clearTimeout(discardTimeout);
+				discardTimeout = null;
+			}
 
 			// Restore state
 			set({
@@ -408,8 +455,10 @@ function createActiveWorkoutStore() {
 			const completedSets = allSets.filter((s) => s.completed);
 
 			if (completedSets.length === 0) {
-				// No completed sets → discard
-				await activeWorkout.discard();
+				// No completed sets → discard immediately (no interactive undo
+				// snackbar is shown for this background/automatic path, so there's
+				// no reason to defer the delete).
+				await activeWorkout.discard({ immediate: true });
 				update((s) => ({ ...s, autoCompleteNotice: 'discarded' as const, lastDiscarded: null }));
 			} else {
 				// Has completed sets → finish with lastActivityAt as finishedAt

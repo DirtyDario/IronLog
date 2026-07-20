@@ -51,6 +51,30 @@
 		// H9: tombstone so remote copy is cleaned up on next sync
 		await db.tombstones.put({ id, entity: 'exercise', entityId: id, deletedAt: new Date(), _synced: false });
 		await db.exercises.delete(id);
+
+		// Bug fix: deleting an exercise previously left dangling references
+		// behind — routineExercises pointing at it silently vanished from the
+		// routine UI (exercise lookup returned undefined) while still existing
+		// in the DB, and personalRecords for it kept showing up in Bests/PRs
+		// forever. Clean those up too. Historical workoutExercises/sets in past
+		// workouts are intentionally left alone — history already renders a
+		// "Deleted exercise" placeholder for them (see history/[id]/+page.svelte).
+		const orphanedRoutineExercises = await db.routineExercises.where('exerciseId').equals(id).toArray();
+		await Promise.all(
+			orphanedRoutineExercises.map((re) =>
+				db.tombstones.put({ id: re.id, entity: 'routineExercise', entityId: re.id, deletedAt: new Date(), _synced: false })
+			)
+		);
+		await db.routineExercises.where('exerciseId').equals(id).delete();
+
+		const orphanedPRs = await db.personalRecords.where('exerciseId').equals(id).toArray();
+		await Promise.all(
+			orphanedPRs.map((pr) =>
+				db.tombstones.put({ id: pr.id, entity: 'personalRecord', entityId: pr.id, deletedAt: new Date(), _synced: false })
+			)
+		);
+		await db.personalRecords.where('exerciseId').equals(id).delete();
+
 		schedulePush();
 		exercises = exercises.filter((e) => e.id !== id);
 	}

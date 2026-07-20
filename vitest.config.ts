@@ -13,6 +13,7 @@ export default defineConfig({
             '$lib': resolve(__dirname, 'src/lib'),
             '$app/stores': resolve(__dirname, 'src/tests/mocks/app-stores.ts'),
             '$app/navigation': resolve(__dirname, 'src/tests/mocks/app-navigation.ts'),
+            '$env/static/public': resolve(__dirname, 'src/tests/mocks/env-static-public.ts'),
         }
     }
 });
